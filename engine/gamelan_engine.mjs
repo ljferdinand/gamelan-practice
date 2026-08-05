@@ -163,7 +163,7 @@ export function snap(f0, refFreqs, offTuneCents = 45) {
 // Measure one struck-tone clip: its fundamental + a quality score (spectral
 // prominence). The UI uses quality to accept a sample or ask for a re-record.
 export function measureTone(x, sr, opts = {}) {
-  const fLo = opts.fLo ?? 60, fHi = opts.fHi ?? 5000;
+  const fLo = opts.fLo ?? 70, fHi = opts.fHi ?? 4500;
   const dur = x.length / sr;
   const f0 = estimateF0(x, sr, 0, dur, { attackSkip: 0.02, maxDur: Math.min(0.6, dur), guard: 0, fLo, fHi });
   if (!f0) return { f0: null, quality: 0 };
@@ -188,7 +188,7 @@ export function calibrateFromSweep(x, sr, opts = {}) {
   const onsets = detectOnsets(x, sr, {
     sensitivity: opts.sensitivity ?? 0.30, minGap: opts.minGap ?? 0.40,
   });
-  const fLo = opts.fLo ?? 250, fHi = opts.fHi ?? 2200;
+  const fLo = opts.fLo ?? 70, fHi = opts.fHi ?? 4500;
   const bars = [];
   for (let i = 0; i < onsets.length; i++) {
     const t1 = i + 1 < onsets.length ? onsets[i + 1] : onsets[i] + 1.0;
