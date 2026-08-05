@@ -144,6 +144,12 @@ table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radi
         <label class="fld">Lowest voice is #__ of its octave
           <input type="number" id="octOffset" min="1" max="12" value="1">
         </label>
+        <label class="fld">Octave dots
+          <select id="dotStyle">
+            <option value="jv" selected>dot above = higher (Javanese)</option>
+            <option value="sd">dot above = lower (Sundanese)</option>
+          </select>
+        </label>
       </div>
       <div class="row radio">
         <span class="hint" style="text-transform:none;letter-spacing:0;">How will you sample the tuning?</span>
@@ -372,6 +378,10 @@ function mergeClose(voices, thr){
   }
   return {voices:out, merged};
 }
+// Octave register from pitch: which octave band above the lowest voice a note
+// sits in. Assumes the lowest measured voice begins an octave (true for a
+// gendér-style layout whose partial octave is at the TOP). The middle band gets
+// no dot; bands above/below get dots above/below.
 // The numbering set for one octave: the pool of labels AND the octave size.
 // Defaults to a five-note pélog 1..5; sléndro is often 1,2,3,5,6; pélog can run
 // to 7. Split on commas or whitespace.
@@ -399,15 +409,23 @@ function applyDefaultLabels(voices){
   const set=numberSet(), n=voices.length;
   voices.forEach((v,i)=>{ v.label=set[(n-1-i) % set.length]; });
 }
+// Octave-dot orientation. Central Javanese kepatihan puts the dot ABOVE for the
+// higher octave. Sundanese (West Java) notation is the reverse: a dot above
+// means the octave BELOW, a dot below means the octave above. Toggle, because
+// Western-taught ensembles vary in which convention they inherit.
+function dotStyle(){ return ($('#dotStyle') && $('#dotStyle').value) || 'jv'; }
+// does this register's dot sit above the number?
+function dotAbove(reg){ return dotStyle()==='sd' ? (reg<0) : (reg>0); }
 function dotsHtml(reg){
   const k=Math.abs(reg||0); if(!k) return '';
-  return '<span class="regdots '+(reg>0?'hi':'lo')+'">'+'<i></i>'.repeat(k)+'</span>';
+  return '<span class="regdots '+(dotAbove(reg)?'hi':'lo')+'">'+'<i></i>'.repeat(k)+'</span>';
 }
 function regWord(reg){ return reg>0?('high'+(reg>1?(' +'+reg):'')):reg<0?('low'+(reg<-1?(' '+reg):'')):'middle'; }
-// a note element: dots above / digit / dots below
+// a note element: dots slot / digit / dots slot, orientation per dotStyle()
 function noteHtml(label, reg){
-  const above = reg>0 ? '<i></i>'.repeat(reg) : '';
-  const below = reg<0 ? '<i></i>'.repeat(-reg) : '';
+  const k=Math.abs(reg||0), up=dotAbove(reg);
+  const above = (k && up) ? '<i></i>'.repeat(k) : '';
+  const below = (k && !up) ? '<i></i>'.repeat(k) : '';
   return '<span class="dots">'+above+'</span><span class="d">'+esc(label)+'</span><span class="dots">'+below+'</span>';
 }
 function voicesFromSweep(samples, sr, sensitivity){
@@ -473,6 +491,11 @@ $('#voiceCount').addEventListener('change',()=>{ if($('input[name=mode]:checked'
   if($('input[name=mode]:checked').value==='voice') buildVoiceRows();
   if(calVoices&&calVoices.length){ assignRegisters(calVoices); renderResults(); }
 }));
+$('#dotStyle').addEventListener('change',()=>{
+  if(calVoices&&calVoices.length) renderResults();
+  if(instrument) buildBars();
+  if(notes&&notes.length){ buildScore(); lastIdx=-1; lastTop=-1; }
+});
 
 // ---- sweep file ----
 $('#sweepFile').addEventListener('change',e=>{
@@ -613,7 +636,7 @@ $('#calSens').addEventListener('change',()=>{
 $('#downloadProfile').addEventListener('click',()=>{
   const src=instrument||(calVoices?{name:$('#instName').value,voices:calVoices.filter(v=>v.f0).map(v=>({label:v.label,f0:v.f0}))}:null);
   if(!src){ msg('Nothing to save yet.','err'); return; }
-  const data={format:'gamelan-instrument',version:1,name:src.name,
+  const data={format:'gamelan-instrument',version:1,name:src.name,dotStyle:dotStyle(),
     voices:src.voices.slice().sort((a,b)=>a.f0-b.f0).map(v=>({label:v.label,hz:+v.f0.toFixed(2),reg:v.reg||0}))};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
@@ -625,6 +648,7 @@ $('#profileFile').addEventListener('change',async e=>{
   try{
     const d=JSON.parse(await f.text());
     if(!d.voices||!d.voices.length) throw new Error('no voices in file');
+    if(d.dotStyle==='sd'||d.dotStyle==='jv') $('#dotStyle').value=d.dotStyle;
     const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0,reg:(v.reg!=null?+v.reg:null)})).sort((a,b)=>a.f0-b.f0);
     if(voices.some(v=>v.reg==null)) assignRegisters(voices);
     instrument={name:d.name||'Instrument',voices};
