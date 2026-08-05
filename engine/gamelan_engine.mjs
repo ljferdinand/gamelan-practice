@@ -1,4 +1,15 @@
 // gamelan_engine.mjs
+//
+// Copyright (C) 2026 Luke Ferdinand
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option) any
+// later version. This program is distributed WITHOUT ANY WARRANTY; without even
+// the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU Affero General Public License <https://www.gnu.org/licenses/> for
+// more details.  Source: https://github.com/ljferdinand/gamelan-practice
+//
 // Self-calibrating tuned-percussion analysis — pure JavaScript, no dependencies.
 // Runs in Node (for tests) and in the browser (Web Audio supplies the samples:
 // decodeAudioData -> AudioBuffer.getChannelData(0) -> Float32Array).
@@ -201,6 +212,38 @@ export function calibrateFromSweep(x, sr, opts = {}) {
 // Calibrate from one clip per voice: [{name, samples}] -> [{name, f0, quality}]
 export function calibrateFromSamples(voiceClips, sr, opts = {}) {
   return voiceClips.map(v => ({ name: v.name, ...measureTone(v.samples, sr, opts) }));
+}
+
+// Fold detections that are too close in pitch to be separate voices (the same
+// bar struck twice). Gamelan bars sit >~100 cents apart, so a small threshold is
+// safe. Expects voices sorted ascending by f0; keeps the higher-quality take.
+export function mergeClose(voices, thresholdCents = 25) {
+  if (voices.length < 2) return { voices, merged: 0 };
+  const out = [voices[0]]; let merged = 0;
+  for (let i = 1; i < voices.length; i++) {
+    const last = out[out.length - 1];
+    const c = Math.abs(1200 * Math.log2(voices[i].f0 / last.f0));
+    if (c <= thresholdCents) {
+      merged++;
+      if ((voices[i].quality || 0) > (last.quality || 0)) out[out.length - 1] = voices[i];
+    } else out.push(voices[i]);
+  }
+  return { voices: out, merged };
+}
+
+// Assign an octave register to each voice from pitch alone, so a repeated number
+// (e.g. three 5s across three octaves) stays unambiguous in notation. Mutates:
+// sets .oct (octave band above the lowest voice) and .reg (offset from the
+// middle band: -1 low, 0 middle, +1 high; larger magnitudes for wider ranges).
+// Assumes the lowest measured voice begins an octave.
+export function assignRegisters(voices) {
+  if (!voices.length) return voices;
+  const lo = voices[0].f0 || 1;
+  voices.forEach(v => { v.oct = v.f0 ? Math.floor(Math.log2(v.f0 / lo) + 0.005) : 0; });
+  const bands = [...new Set(voices.map(v => v.oct))].sort((a, b) => a - b);
+  const centre = bands[Math.floor((bands.length - 1) / 2)];
+  voices.forEach(v => { v.reg = v.oct - centre; });
+  return voices;
 }
 
 // ------------------------------------------------------------ transcribe ----
