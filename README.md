@@ -1,13 +1,12 @@
 # Gamelan Practice
 
-A self-calibrating practice tool for gamelan (and other tuned percussion). It
-measures **your** instrument's tuning from samples you record — because gamelan
-are tuned to themselves, with no canonical scale — then transcribes a
-performance against that tuning and plays it back with each strike highlighted.
+A self-calibrating practice tool for gamelan. It measures **your** instrument's
+tuning from samples you record — because gamelan are tuned to themselves, with no
+canonical scale — then transcribes a performance against that tuning and plays it
+back with each strike highlighted.
 
 **[Run it in your browser →](https://ljferdinand.github.io/gamelan-practice/)**
-Nothing to install. It also packages into a small Mac/Windows desktop app with
-Tauri if you want it offline.
+Nothing to install. Everything runs locally; no audio is uploaded anywhere.
 
 ## What it does
 
@@ -15,21 +14,41 @@ Tauri if you want it offline.
   one *sweep* (each voice struck once, in order) or one *clip per voice*. It
   measures each fundamental and a quality score, flags unclear samples, folds
   away a bar accidentally caught twice, and lets you preview (▶) or remove (🗑)
-  any detected voice. Save the result as an instrument profile (JSON) to reuse.
-- **Number it your way.** The table reads highest note first, and you type the
-  numbering your instrument actually uses; the sweep direction does not matter,
-  because everything is anchored to measured pitch. Octaves are detected from
-  pitch and drawn as a dot above (high), no dot (middle), or a dot below (low),
-  so the same number can recur in each octave without ambiguity.
+  any detected voice. A sensitivity slider re-measures the sweep without
+  re-uploading. Save the result as an instrument profile (JSON) to reuse.
+- **Number it your way.** The table reads highest note first, and you pick each
+  label from a dropdown built from your own **numbering set** for one octave.
+  Sweep direction is irrelevant, because everything is anchored to measured
+  pitch.
 - **Play along.** Load a performance; it snaps every strike to your measured
-  voices and shows a bar strip + a note stream in your labels, with a gold
-  play-head, seek bar, and speed control. Strikes that match no voice are
-  flagged (an out-of-vocabulary signal that later drives section detection).
+  voices and shows a bar strip plus a note stream in your labels, with a gold
+  play-head, seek bar, speed control, and transport buttons that step one
+  four-note *gatra* at a time (arrow keys work too). Strikes matching no voice
+  are flagged.
 
-No scale and no voice count are hardcoded. Audio in: WAV, MP3, M4A/AAC/MP4,
-FLAC (and AIFF where the platform webview supports it), decoded via the Web
-Audio API. Everything runs locally in your browser: no audio is uploaded
-anywhere.
+## Notation conventions: this tool does not assume one tradition
+
+Gamelan cipher notation differs by region, and the differences invert each other,
+so both are configurable rather than hardcoded.
+
+- **Numbering set.** Defaults to `1,2,3,4,5` (a five-tone octave). Central
+  Javanese *sléndro* is often `1,2,3,5,6`; Javanese *pélog* can run to 7;
+  Sundanese *daminatila* is `1,2,3,4,5` (da-mi-na-ti-la). The set also defines
+  the octave size, so an instrument with an extra tone is handled by adding it.
+- **Number direction.** Central Javanese kepatihan numbers ascend with pitch.
+  Sundanese notation runs the other way, with 1 as the *highest* pitch. Because
+  you label from the highest voice downward, either convention works.
+- **Octave dots.** Toggle. Central Javanese: a dot above means the higher
+  octave. Sundanese: the reverse, a dot above means the octave *below*. The
+  choice is saved in the instrument profile.
+
+Octave registers are assigned by **position**, counting voices in groups of the
+octave size, deliberately not by measuring 2:1 ratios — gamelan octaves are
+frequently stretched or compressed, and cutting bands at exact doublings can drop
+a group-starting bar into the wrong register.
+
+Audio in: WAV, MP3, M4A/AAC/MP4, FLAC, and AIFF where the platform webview
+supports it, decoded via the Web Audio API.
 
 ## Run it locally instead
 
@@ -76,7 +95,7 @@ transcription output.
 ## Status
 
 Working and browser-verified: calibration, numbering, transcription, and
-play-along. Next: assisted section detection (propose breaks from pauses +
+play-along. Next: assisted section detection (propose breaks from pauses plus
 out-of-vocabulary strikes, confirm with one tap).
 
 ## License
