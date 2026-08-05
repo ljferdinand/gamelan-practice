@@ -1,4 +1,23 @@
 <!doctype html>
+<!--
+  Gamelan Practice — a self-calibrating practice tool for gamelan.
+  Copyright (C) 2026 Luke Ferdinand
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU Affero General Public License as published by the Free
+  Software Foundation, either version 3 of the License, or (at your option) any
+  later version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+  FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+  details.
+
+  You should have received a copy of the GNU Affero General Public License along
+  with this program. If not, see <https://www.gnu.org/licenses/>.
+
+  Source: https://github.com/ljferdinand/gamelan-practice
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -70,10 +89,17 @@ table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6p
 .notes{display:flex;flex-wrap:wrap;row-gap:8px;}
 .gatra{display:inline-flex;padding-right:12px;margin-right:6px;border-right:1px solid var(--line);}
 .gatra:last-child{border-right:none;}
-.note{min-width:24px;padding:0 2px;text-align:center;font-size:15px;font-variant-numeric:tabular-nums;color:var(--parch);cursor:pointer;transition:color .12s,transform .12s;}
-.note.q{color:var(--bad);opacity:.7;}       /* out-of-vocabulary / off-tune */
-.note.played{color:var(--muted);opacity:.55;}
-.note.active{color:var(--gold);transform:scale(1.3);text-shadow:0 0 12px var(--glow);}
+.note{position:relative;min-width:24px;padding:0 2px;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;}
+.note .d{font-size:15px;line-height:17px;font-variant-numeric:tabular-nums;color:var(--parch);transition:color .12s,transform .12s,text-shadow .12s;}
+.note .dots{display:flex;gap:2px;height:4px;align-items:center;justify-content:center;}
+.note .dots i{width:3px;height:3px;border-radius:50%;background:var(--parch);display:block;}
+.note.q .d{color:var(--bad);opacity:.7;}       /* out-of-vocabulary / off-tune */
+.note.played .d{color:var(--muted);opacity:.55;}
+.note.played .dots i{background:var(--muted);opacity:.55;}
+.note.active .d{color:var(--gold);transform:scale(1.3);text-shadow:0 0 12px var(--glow);}
+.note.active .dots i{background:var(--gold);}
+.regdots{display:inline-flex;gap:2px;vertical-align:middle;}
+.regdots i{width:3px;height:3px;border-radius:50%;background:var(--parch);display:block;}
 .empty{color:var(--muted);text-align:center;padding:24px;font-size:14px;}
 .foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);padding-top:14px;margin-top:6px;}
 .foot b{color:var(--parch);}
@@ -139,7 +165,7 @@ table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6p
 
     <div class="panel" id="resultPanel" style="display:none;">
       <div class="hint" style="text-transform:none;letter-spacing:0;margin-bottom:4px;">
-        Measured tuning — edit the labels to match your numbering, then use it. A ⚠ means the sample was unclear; consider re-recording that voice.
+        <b style="color:var(--parch)">Number these to match your instrument's own layout, reading from the highest note down</b> — the table is ordered highest-first for exactly that, and it does not matter which direction you played the sweep. Labels default to a repeating 1–5 (a five-note octave); overwrite them with your numbering. Octaves are detected from pitch: a dot below = low, no dot = middle, a dot above = high, so the same number can recur in each octave and stay distinct. A ⚠ means the sample was unclear; consider re-recording that voice.
       </div>
       <div class="row" id="sensRow" style="display:none;align-items:center;">
         <label class="fld" style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;">Detection sensitivity
@@ -183,8 +209,9 @@ table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6p
   </section>
 
   <div class="foot">
-    <b>How it works:</b> every gamelan is tuned to itself, so this tool measures your instrument's fundamentals from the samples you give it — no scale assumed. Strikes in a performance are then snapped to your measured voices. A number in <span class="warn">this colour</span> is a strike that matched none of your voices well (an out-of-vocabulary sound — later this will help mark section breaks).<br>
-    Audio in: WAV, MP3, M4A/AAC/MP4, FLAC (and AIFF where your browser supports it).
+    <b>How it works:</b> every gamelan is tuned to itself, so this tool measures your instrument's fundamentals from the samples you give it — no scale assumed. You supply the numbering from your own layout (highest note down); octaves come from pitch and show as a dot above (high), no dot (middle), or a dot below (low), so a repeated number stays unambiguous. Strikes in a performance are then snapped to your measured voices. A number in <span class="warn">this colour</span> is a strike that matched none of your voices well (an out-of-vocabulary sound — later this will help mark section breaks).<br>
+    Audio in: WAV, MP3, M4A/AAC/MP4, FLAC (and AIFF where your browser supports it).<br>
+    Free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" style="color:var(--bronze)">GNU AGPL v3</a> · <a href="https://github.com/ljferdinand/gamelan-practice" style="color:var(--bronze)">source code</a>
   </div>
 </div>
 
@@ -330,6 +357,35 @@ function mergeClose(voices, thr){
   }
   return {voices:out, merged};
 }
+// Octave register from pitch: which octave band above the lowest voice a note
+// sits in. Assumes the lowest measured voice begins an octave (true for a
+// gendér-style layout whose partial octave is at the TOP). The middle band gets
+// no dot; bands above/below get dots above/below.
+const OCTAVE_VOICES = 5;            // pélog: 5 voices to an octave
+function assignRegisters(voices){
+  if(!voices.length) return;
+  const lo=voices[0].f0||1;
+  voices.forEach(v=>{ v.oct = v.f0 ? Math.floor(Math.log2(v.f0/lo)+0.005) : 0; });
+  const bands=[...new Set(voices.map(v=>v.oct))].sort((a,b)=>a-b);
+  const centre=bands[Math.floor((bands.length-1)/2)];
+  voices.forEach(v=>{ v.reg = v.oct - centre; });   // -1 low, 0 middle, +1 high
+}
+// default labels: repeating 1..OCTAVE_VOICES counted DOWN from the highest voice
+function applyDefaultLabels(voices){
+  const n=voices.length;
+  voices.forEach((v,i)=>{ v.label=String(((n-1-i) % OCTAVE_VOICES)+1); });
+}
+function dotsHtml(reg){
+  const k=Math.abs(reg||0); if(!k) return '';
+  return '<span class="regdots">'+'<i></i>'.repeat(k)+'</span>';
+}
+function regWord(reg){ return reg>0?('high'+(reg>1?(' +'+reg):'')):reg<0?('low'+(reg<-1?(' '+reg):'')):'middle'; }
+// a note element: dots above / digit / dots below
+function noteHtml(label, reg){
+  const above = reg>0 ? '<i></i>'.repeat(reg) : '';
+  const below = reg<0 ? '<i></i>'.repeat(-reg) : '';
+  return '<span class="dots">'+above+'</span><span class="d">'+esc(label)+'</span><span class="dots">'+below+'</span>';
+}
 function voicesFromSweep(samples, sr, sensitivity){
   const bars=calibrateFromSweep(samples, sr, {sensitivity});   // temporal order [{t,f0,quality}]
   let voices=bars.map((b,i)=>{
@@ -341,7 +397,8 @@ function voicesFromSweep(samples, sr, sensitivity){
   voices.sort((a,b)=>a.f0-b.f0);                    // low -> high
   const mg=mergeClose(voices, MERGE_CENTS);         // fold same-bar double detections
   voices=mg.voices;
-  voices.forEach((v,i)=>v.label=String(i+1));       // default labels by pitch; user edits
+  assignRegisters(voices);
+  applyDefaultLabels(voices);                       // 1..5 counted down from the top; user edits
   return {voices, merged:mg.merged};
 }
 
@@ -426,6 +483,7 @@ $('#analyzeVoices').addEventListener('click',async()=>{
       voices.push({label,f0,quality,seg,sr,previewed:false});
     }
     voices.sort((a,b)=>(a.f0||0)-(b.f0||0));
+    assignRegisters(voices);
     calVoices=voices; calMode='voice';
     expectedVoices=voices.length;
     renderResults();
@@ -437,8 +495,10 @@ function renderResults(){
   const t=$('#calTable');
   const qs=calVoices.map(v=>v.quality||0).filter(q=>q>0).sort((a,b)=>a-b);
   const qmed=qs.length?qs[qs.length>>1]:1;
-  let rows='<tr><th>#</th><th>label</th><th>Hz</th><th>interval</th><th>quality</th><th></th></tr>';
-  calVoices.forEach((v,i)=>{
+  let rows='<tr><th>#</th><th>label</th><th>octave</th><th>Hz</th><th>interval</th><th>quality</th><th></th></tr>';
+  const order=calVoices.map((_,i)=>i).reverse();     // display highest voice first
+  order.forEach((i,pos)=>{
+    const v=calVoices[i];
     const prev=i>0?calVoices[i-1].f0:null;
     const iv=prev&&v.f0?Math.round(1200*Math.log2(v.f0/prev)):null;
     const q=v.quality||0;
@@ -448,8 +508,9 @@ function renderResults(){
     const canPrev = !!v.seg;
     const canDel = !v.seg || v.previewed;   // gate: you must hear a measured tone before removing it
     rows+='<tr>'+
-      '<td>'+(i+1)+'</td>'+
+      '<td>'+(pos+1)+'</td>'+
       '<td><input class="lbl" data-i="'+i+'" value="'+esc(v.label||'')+'"></td>'+
+      '<td>'+dotsHtml(v.reg)+' <span class="hint" style="text-transform:none;letter-spacing:0">'+regWord(v.reg)+'</span></td>'+
       '<td>'+(v.f0?v.f0.toFixed(1):'—')+'</td>'+
       '<td>'+(iv!=null?('+'+iv+'¢'):'—')+'</td>'+
       '<td>'+qcell+'</td>'+
@@ -469,7 +530,7 @@ function renderResults(){
   t.querySelectorAll('.del').forEach(b=>b.addEventListener('click',()=>{
     const i=+b.dataset.i, v=calVoices[i]; if(!v)return;
     if(v.seg && !v.previewed) return;      // enforce the preview-first gate
-    calVoices.splice(i,1); renderResults();
+    calVoices.splice(i,1); assignRegisters(calVoices); renderResults();
   }));
   $('#resultPanel').style.display='';
   $('#sensRow').style.display = (calMode==='sweep' && sweepSamples) ? 'flex' : 'none';
@@ -486,8 +547,9 @@ function updateCalWarning(){
 // ---- use tuning ----
 $('#useTuning').addEventListener('click',()=>{
   if(!calVoices||!calVoices.some(v=>v.f0)){ msg('No usable tuning to apply.','err'); return; }
-  const voices=calVoices.filter(v=>v.f0).map(v=>({label:v.label||'?',f0:v.f0,quality:v.quality||0}));
+  const voices=calVoices.filter(v=>v.f0).map(v=>({label:v.label||'?',f0:v.f0,quality:v.quality||0,reg:v.reg||0}));
   voices.sort((a,b)=>a.f0-b.f0);
+  assignRegisters(voices);
   instrument={name:$('#instName').value||'Instrument',voices};
   $('#tabPlay').disabled=false;
   $('#instLabel').textContent=instrument.name;
@@ -499,7 +561,8 @@ $('#useTuning').addEventListener('click',()=>{
 $('#renumber').addEventListener('click',()=>{
   if(!calVoices||!calVoices.length)return;
   calVoices.sort((a,b)=>(a.f0||0)-(b.f0||0));
-  calVoices.forEach((v,i)=>v.label=String(i+1));
+  assignRegisters(calVoices);
+  applyDefaultLabels(calVoices);
   renderResults();
 });
 $('#calSens').addEventListener('input',()=>{ $('#calSensVal').textContent=parseFloat($('#calSens').value).toFixed(2); });
@@ -518,7 +581,7 @@ $('#downloadProfile').addEventListener('click',()=>{
   const src=instrument||(calVoices?{name:$('#instName').value,voices:calVoices.filter(v=>v.f0).map(v=>({label:v.label,f0:v.f0}))}:null);
   if(!src){ msg('Nothing to save yet.','err'); return; }
   const data={format:'gamelan-instrument',version:1,name:src.name,
-    voices:src.voices.slice().sort((a,b)=>a.f0-b.f0).map(v=>({label:v.label,hz:+v.f0.toFixed(2)}))};
+    voices:src.voices.slice().sort((a,b)=>a.f0-b.f0).map(v=>({label:v.label,hz:+v.f0.toFixed(2),reg:v.reg||0}))};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=(src.name||'instrument').replace(/[^\w.-]+/g,'_')+'.gamelan.json';a.click();
@@ -529,9 +592,10 @@ $('#profileFile').addEventListener('change',async e=>{
   try{
     const d=JSON.parse(await f.text());
     if(!d.voices||!d.voices.length) throw new Error('no voices in file');
-    const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0})).sort((a,b)=>a.f0-b.f0);
+    const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0,reg:(v.reg!=null?+v.reg:null)})).sort((a,b)=>a.f0-b.f0);
+    if(voices.some(v=>v.reg==null)) assignRegisters(voices);
     instrument={name:d.name||'Instrument',voices};
-    calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0,previewed:false}));
+    calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0,reg:v.reg,previewed:false}));
     calMode='loaded'; expectedVoices=calVoices.length;
     renderResults();
     $('#tabPlay').disabled=false;$('#instLabel').textContent=instrument.name;
@@ -552,8 +616,9 @@ function buildBars(){
   instrument.voices.forEach((v,i)=>{
     const el=document.createElement('div');el.className='bar';
     const f=n>1?i/(n-1):0;el.style.width=(24-f*10)+'px';el.style.height=(84-f*46)+'px';
-    el.title=v.label+' · '+v.f0.toFixed(1)+' Hz';
-    const lab=document.createElement('span');lab.className='blab';lab.textContent=v.label;el.appendChild(lab);
+    el.title=v.label+' · '+regWord(v.reg)+' · '+v.f0.toFixed(1)+' Hz';
+    const lab=document.createElement('span');lab.className='blab';
+    lab.innerHTML=esc(v.label)+dotsHtml(v.reg);el.appendChild(lab);
     wrap.appendChild(el);barEls[i]=el;
   });
 }
@@ -581,9 +646,11 @@ function buildScore(){
   const row=document.createElement('div');row.className='notes';let g=null;
   notes.forEach((nt,i)=>{
     if(i%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
-    const lab = nt.snap && nt.snap.flag!=='?' ? instrument.voices[nt.snap.index].label : '·';
-    const el=document.createElement('span');el.className='note'+(nt.snap&&nt.snap.flag==='?'?' q':'');
-    el.textContent=lab;
+    const known = nt.snap && nt.snap.flag!=='?';
+    const vc = known ? instrument.voices[nt.snap.index] : null;
+    const el=document.createElement('span');el.className='note'+(known?'':' q');
+    el.innerHTML = noteHtml(known?vc.label:'·', known?(vc.reg||0):0);
+    if(known) el.title=vc.label+' · '+regWord(vc.reg);
     el.addEventListener('click',()=>{ if(!audio.src)return; audio.currentTime=nt.t; if(audio.paused) togglePlay(); });
     g.appendChild(el);noteEls[i]=el;
   });
