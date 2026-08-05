@@ -231,15 +231,20 @@ export function mergeClose(voices, thresholdCents = 25) {
   return { voices: out, merged };
 }
 
-// Assign an octave register to each voice from pitch alone, so a repeated number
-// (e.g. three 5s across three octaves) stays unambiguous in notation. Mutates:
-// sets .oct (octave band above the lowest voice) and .reg (offset from the
-// middle band: -1 low, 0 middle, +1 high; larger magnitudes for wider ranges).
-// Assumes the lowest measured voice begins an octave.
-export function assignRegisters(voices) {
+// Assign an octave register to each voice, so a repeated number (e.g. three 5s
+// across three octaves) stays unambiguous in notation. Groups voices by POSITION
+// in chunks of octaveSize, counting from the lowest — deliberately not by
+// measuring pitch, because gamelan octaves are frequently stretched or
+// compressed, and cutting bands at exact 2:1 doublings can drop a
+// group-starting bar into the band below and shift the whole notation.
+// `offset` is the lowest voice's 0-based position within its octave, for an
+// instrument whose partial octave sits at the bottom.
+// Expects voices sorted ascending by f0. Mutates: sets .oct (group index) and
+// .reg (offset from the middle group: -1 low, 0 middle, +1 high).
+export function assignRegisters(voices, octaveSize = 5, offset = 0) {
   if (!voices.length) return voices;
-  const lo = voices[0].f0 || 1;
-  voices.forEach(v => { v.oct = v.f0 ? Math.floor(Math.log2(v.f0 / lo) + 0.005) : 0; });
+  const size = Math.max(1, octaveSize);
+  voices.forEach((v, i) => { v.oct = Math.floor((i + offset) / size); });
   const bands = [...new Set(voices.map(v => v.oct))].sort((a, b) => a - b);
   const centre = bands[Math.floor((bands.length - 1) / 2)];
   voices.forEach(v => { v.reg = v.oct - centre; });
