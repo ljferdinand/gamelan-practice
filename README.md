@@ -5,16 +5,22 @@ measures **your** instrument's tuning from samples you record — because gamela
 are tuned to themselves, with no canonical scale — then transcribes a
 performance against that tuning and plays it back with each strike highlighted.
 
-Runs as a plain web app (open `src/index.html` in a browser) and packages into a
-small Mac/Windows desktop app with Tauri.
+**[Run it in your browser →](https://ljferdinand.github.io/gamelan-practice/)**
+Nothing to install. It also packages into a small Mac/Windows desktop app with
+Tauri if you want it offline.
 
 ## What it does
 
 - **Calibrate.** Name the instrument and its number of voices, then either drop
   one *sweep* (each voice struck once, in order) or one *clip per voice*. It
-  measures each fundamental and a quality score, flags unclear samples, and lets
-  you label the voices in your own numbering. Save the result as an instrument
-  profile (JSON) to reuse.
+  measures each fundamental and a quality score, flags unclear samples, folds
+  away a bar accidentally caught twice, and lets you preview (▶) or remove (🗑)
+  any detected voice. Save the result as an instrument profile (JSON) to reuse.
+- **Number it your way.** The table reads highest note first, and you type the
+  numbering your instrument actually uses; the sweep direction does not matter,
+  because everything is anchored to measured pitch. Octaves are detected from
+  pitch and drawn as a dot above (high), no dot (middle), or a dot below (low),
+  so the same number can recur in each octave without ambiguity.
 - **Play along.** Load a performance; it snaps every strike to your measured
   voices and shows a bar strip + a note stream in your labels, with a gold
   play-head, seek bar, and speed control. Strikes that match no voice are
@@ -22,9 +28,10 @@ small Mac/Windows desktop app with Tauri.
 
 No scale and no voice count are hardcoded. Audio in: WAV, MP3, M4A/AAC/MP4,
 FLAC (and AIFF where the platform webview supports it), decoded via the Web
-Audio API.
+Audio API. Everything runs locally in your browser: no audio is uploaded
+anywhere.
 
-## Run as a web app
+## Run it locally instead
 
 Open `src/index.html` in any modern browser. Nothing to install.
 
@@ -58,16 +65,28 @@ frontend and set `build.frontendDist` to `../src`.
 src/index.html            the app (self-contained; analysis engine inlined)
 engine/gamelan_engine.mjs the analysis engine as a standalone ES module
 src-tauri/                Tauri desktop wrapper (config + Rust shell)
+.github/workflows/        GitHub Pages deployment
 ```
 
-The engine (FFT, onset detection, pitch, self-calibration, snapping,
-transcription) is dependency-free and was validated against a Python reference
-to sub-cent tuning accuracy and identical transcription output.
+The engine (FFT, onset detection, pitch, self-calibration, near-duplicate
+folding, octave registers, snapping, transcription) is dependency-free and was
+validated against a Python reference to sub-cent tuning accuracy and identical
+transcription output.
 
 ## Status
 
-Working and browser-verified: calibration, transcription, and play-along. Next:
-assisted section detection (propose breaks from pauses + out-of-vocabulary
-strikes, confirm with one tap), then desktop-packaging polish.
+Working and browser-verified: calibration, numbering, transcription, and
+play-along. Next: assisted section detection (propose breaks from pauses +
+out-of-vocabulary strikes, confirm with one tap).
+
+## License
+
+Copyright (C) 2026 Luke Ferdinand.
+
+Free software under the **GNU Affero General Public License v3.0 or later**
+(AGPL-3.0-or-later). You may use, study, share, and modify it; if you distribute
+it or run a modified version as a network service, you must pass on the same
+freedoms and make your source available under the same license. See
+[LICENSE](LICENSE), or <https://www.gnu.org/licenses/agpl-3.0.html>.
 
 *A personal music project.*
