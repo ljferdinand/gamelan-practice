@@ -60,6 +60,7 @@ table.cal{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px;}
 table.cal th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
 table.cal td{padding:6px 8px;border-bottom:1px solid #2a2016;font-variant-numeric:tabular-nums;}
 table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--gold);width:74px;padding:4px 6px;font-size:14px;font-weight:600;text-align:center;}
+table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--gold);padding:4px 6px;font-size:14px;font-weight:600;text-align:center;}
 .q{display:inline-block;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--bronze2),var(--gold));vertical-align:middle;}
 .rowbtns{white-space:nowrap;text-align:right;}
 .ibtn{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--parch);cursor:pointer;font-size:12px;padding:3px 8px;margin-left:4px;line-height:1;}
@@ -136,6 +137,12 @@ table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6p
         </label>
         <label class="fld">Voices (bars/keys)
           <input type="number" id="voiceCount" min="1" max="40" value="14">
+        </label>
+        <label class="fld">Numbering set (one octave)
+          <input type="text" id="numSet" value="1,2,3,4,5" style="min-width:150px">
+        </label>
+        <label class="fld">Lowest voice is #__ of its octave
+          <input type="number" id="octOffset" min="1" max="12" value="1">
         </label>
       </div>
       <div class="row radio">
@@ -365,23 +372,32 @@ function mergeClose(voices, thr){
   }
   return {voices:out, merged};
 }
-// Octave register from pitch: which octave band above the lowest voice a note
-// sits in. Assumes the lowest measured voice begins an octave (true for a
-// gendér-style layout whose partial octave is at the TOP). The middle band gets
-// no dot; bands above/below get dots above/below.
-const OCTAVE_VOICES = 5;            // pélog: 5 voices to an octave
+// The numbering set for one octave: the pool of labels AND the octave size.
+// Defaults to a five-note pélog 1..5; sléndro is often 1,2,3,5,6; pélog can run
+// to 7. Split on commas or whitespace.
+function numberSet(){
+  const raw=($('#numSet')&&$('#numSet').value)||'1,2,3,4,5';
+  const set=raw.split(/[,\s]+/).map(s=>s.trim()).filter(Boolean);
+  return set.length?set:['1','2','3','4','5'];
+}
+function octOffset(){ return Math.max(0,(parseInt($('#octOffset')&&$('#octOffset').value)||1)-1); }
+// Octave register by POSITION, counting voices in groups of the octave size from
+// the lowest. Deliberately not measured from pitch: gamelan octaves are often
+// stretched or compressed, so cutting bands at exact doublings can drop a
+// group-starting bar into the band below. Offset covers a partial octave at the
+// bottom. Middle band gets no dot; bands above/below get dots above/below.
 function assignRegisters(voices){
   if(!voices.length) return;
-  const lo=voices[0].f0||1;
-  voices.forEach(v=>{ v.oct = v.f0 ? Math.floor(Math.log2(v.f0/lo)+0.005) : 0; });
+  const size=numberSet().length, off=octOffset();
+  voices.forEach((v,i)=>{ v.oct = Math.floor((i+off)/size); });
   const bands=[...new Set(voices.map(v=>v.oct))].sort((a,b)=>a-b);
   const centre=bands[Math.floor((bands.length-1)/2)];
   voices.forEach(v=>{ v.reg = v.oct - centre; });   // -1 low, 0 middle, +1 high
 }
-// default labels: repeating 1..OCTAVE_VOICES counted DOWN from the highest voice
+// default labels: cycle the numbering set, counted DOWN from the highest voice
 function applyDefaultLabels(voices){
-  const n=voices.length;
-  voices.forEach((v,i)=>{ v.label=String(((n-1-i) % OCTAVE_VOICES)+1); });
+  const set=numberSet(), n=voices.length;
+  voices.forEach((v,i)=>{ v.label=set[(n-1-i) % set.length]; });
 }
 function dotsHtml(reg){
   const k=Math.abs(reg||0); if(!k) return '';
@@ -436,11 +452,13 @@ document.querySelectorAll('input[name=mode]').forEach(r=>r.addEventListener('cha
 }));
 function buildVoiceRows(){
   const n=Math.max(1,Math.min(40,parseInt($('#voiceCount').value)||1));
+  const set=numberSet();
   const box=$('#voiceRows');box.innerHTML='';
   for(let i=0;i<n;i++){
+    const def=set[((n-1-i) % set.length)];
     const row=document.createElement('div');row.className='row';row.style.margin='6px 0';
     row.innerHTML='<label class="fld" style="flex-direction:row;align-items:center;gap:6px;">label '+
-      '<input type="text" class="vlabel" style="width:70px;min-width:0" value="'+(i+1)+'"></label>'+
+      '<select class="vlabel">'+set.map(o=>'<option'+(o===def?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select></label>'+
       '<label class="drop">📎 <span class="vname">voice '+(i+1)+' clip…</span>'+
       '<input type="file" class="vfile" accept="audio/*,.wav,.mp3,.m4a,.m4b,.mp4,.aac,.flac,.aif,.aiff" hidden></label>';
     box.appendChild(row);
@@ -451,6 +469,10 @@ function buildVoiceRows(){
   }));
 }
 $('#voiceCount').addEventListener('change',()=>{ if($('input[name=mode]:checked').value==='voice') buildVoiceRows(); });
+['#numSet','#octOffset'].forEach(sel=>$(sel).addEventListener('change',()=>{
+  if($('input[name=mode]:checked').value==='voice') buildVoiceRows();
+  if(calVoices&&calVoices.length){ assignRegisters(calVoices); renderResults(); }
+}));
 
 // ---- sweep file ----
 $('#sweepFile').addEventListener('change',e=>{
@@ -515,9 +537,12 @@ function renderResults(){
     const qcell = v.f0 ? ('<span class="q" style="width:'+qw+'px"></span> '+(bad?'<span class="warn">⚠ unclear</span>':'<span class="ok">ok</span>')) : '<span class="warn">no tone</span>';
     const canPrev = !!v.seg;
     const canDel = !v.seg || v.previewed;   // gate: you must hear a measured tone before removing it
+    const opts=numberSet().slice();
+    if(v.label!=null && v.label!=='' && opts.indexOf(String(v.label))<0) opts.unshift(String(v.label));
+    const sel='<select class="lbl" data-i="'+i+'">'+opts.map(o=>'<option'+(String(v.label)===o?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
     rows+='<tr>'+
       '<td>'+(pos+1)+'</td>'+
-      '<td><input class="lbl" data-i="'+i+'" value="'+esc(v.label||'')+'"></td>'+
+      '<td>'+sel+'</td>'+
       '<td>'+dotsHtml(v.reg)+' <span class="hint" style="text-transform:none;letter-spacing:0">'+regWord(v.reg)+'</span></td>'+
       '<td>'+(v.f0?v.f0.toFixed(1):'—')+'</td>'+
       '<td>'+(iv!=null?('+'+iv+'¢'):'—')+'</td>'+
@@ -529,7 +554,7 @@ function renderResults(){
       '</tr>';
   });
   t.innerHTML=rows;
-  t.querySelectorAll('.lbl').forEach(inp=>inp.addEventListener('input',e=>{ calVoices[+e.target.dataset.i].label=e.target.value; }));
+  t.querySelectorAll('.lbl').forEach(inp=>inp.addEventListener('change',e=>{ calVoices[+e.target.dataset.i].label=e.target.value; }));
   t.querySelectorAll('.prev').forEach(b=>b.addEventListener('click',()=>{
     const i=+b.dataset.i, v=calVoices[i]; if(!v||!v.seg)return;
     playSeg(v.seg, v.sr); v.previewed=true; b.classList.add('played');
