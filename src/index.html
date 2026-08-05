@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gamelan Practice — self-calibrating</title>
+<style>
+:root{
+  --lacquer:#191410; --panel:#241b14; --panel2:#1f1710; --line:#3a2c20;
+  --parch:#ece0c8; --muted:#9d8f78; --bronze:#c0803a; --bronze2:#a86a2e;
+  --gold:#ffd36b; --glow:rgba(255,200,90,.55); --bad:#c8683a;
+}
+*{box-sizing:border-box}
+body{margin:0;color:var(--parch);
+  background:radial-gradient(1200px 520px at 50% -12%, #2b2016 0%, var(--lacquer) 62%) fixed;
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:980px;margin:0 auto;padding:26px 22px 56px;}
+header{margin-bottom:14px;}
+h1{margin:0;font-family:"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;font-weight:600;font-size:28px;color:var(--gold);letter-spacing:.3px;}
+.sub{margin:2px 0 0;color:var(--muted);font-size:13px;}
+.tabs{display:flex;gap:8px;margin:16px 0;}
+.tab{background:#160f0a;border:1px solid var(--line);border-radius:9px 9px 0 0;padding:9px 18px;color:var(--muted);cursor:pointer;font-size:14px;font-weight:600;}
+.tab.on{color:var(--gold);border-color:var(--bronze);background:var(--panel);}
+.tab:disabled{opacity:.4;cursor:not-allowed;}
+.panel{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px rgba(0,0,0,.35);}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:10px 0;}
+label.fld{display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;}
+input[type=text],input[type=number],select{background:#160f0a;color:var(--parch);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:14px;}
+input[type=number]{width:80px;}
+input[type=text]{min-width:200px;}
+.radio{display:flex;gap:16px;align-items:center;color:var(--parch);font-size:13px;}
+.radio label{display:flex;gap:6px;align-items:center;cursor:pointer;}
+.btn{background:linear-gradient(180deg,var(--bronze),var(--bronze2));border:none;color:#1a120a;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn.ghost{background:#160f0a;border:1px solid var(--line);color:var(--parch);font-weight:600;}
+.btn.ghost:hover{border-color:var(--bronze);}
+.drop{display:inline-flex;align-items:center;gap:8px;background:#160f0a;border:1px dashed var(--line);border-radius:8px;padding:8px 12px;color:var(--parch);cursor:pointer;font-size:13px;}
+.drop:hover{border-color:var(--bronze);}
+.hint{color:var(--muted);font-size:12px;line-height:1.5;}
+table.cal{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px;}
+table.cal th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+table.cal td{padding:6px 8px;border-bottom:1px solid #2a2016;font-variant-numeric:tabular-nums;}
+table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--gold);width:74px;padding:4px 6px;font-size:14px;font-weight:600;text-align:center;}
+.q{display:inline-block;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--bronze2),var(--gold));vertical-align:middle;}
+.warn{color:var(--bad);font-weight:600;}
+.ok{color:var(--gold);}
+.msg{margin:10px 0;padding:10px 12px;border-radius:8px;font-size:13px;display:none;}
+.msg.err{display:block;background:rgba(200,104,58,.12);border:1px solid var(--bad);color:#f0b48c;}
+.msg.info{display:block;background:rgba(255,211,107,.08);border:1px solid var(--line);color:var(--parch);}
+/* play view */
+.controls{display:flex;flex-wrap:wrap;align-items:center;gap:14px;}
+.play{background:linear-gradient(180deg,var(--bronze),var(--bronze2));border:none;color:#1a120a;font-weight:700;padding:9px 22px;border-radius:8px;cursor:pointer;font-size:14px;}
+.play:disabled{opacity:.4;cursor:not-allowed;}
+.speed input{width:104px;accent-color:var(--bronze);}
+.readout{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;}
+.seek{position:relative;height:9px;margin:14px 0 6px;border-radius:6px;background:#160f0a;border:1px solid var(--line);cursor:pointer;overflow:hidden;}
+.seek-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,var(--bronze2),var(--bronze));}
+.bars{display:flex;align-items:flex-end;justify-content:center;gap:6px;height:96px;margin-top:6px;}
+.bar{position:relative;border-radius:3px 3px 2px 2px;background:linear-gradient(180deg,#e8b96e 0%,#c0803a 46%,#7c4f22 100%);box-shadow:0 2px 4px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,240,200,.5);transition:filter .38s ease-out,box-shadow .38s ease-out,transform .38s ease-out;}
+.bar .blab{position:absolute;left:0;right:0;bottom:3px;text-align:center;font-size:9px;color:rgba(38,24,8,.6);font-weight:700;}
+.bar.hit{filter:brightness(1.75) saturate(1.15);transform:translateY(-2px);box-shadow:0 0 22px 5px var(--glow),0 0 9px 1px var(--gold),inset 0 1px 0 rgba(255,255,255,.75);}
+.caption{text-align:center;color:var(--muted);font-size:11px;margin-top:9px;letter-spacing:.3px;}
+.score{max-height:40vh;overflow-y:auto;margin-top:6px;scroll-behavior:smooth;}
+.notes{display:flex;flex-wrap:wrap;row-gap:8px;}
+.gatra{display:inline-flex;padding-right:12px;margin-right:6px;border-right:1px solid var(--line);}
+.gatra:last-child{border-right:none;}
+.note{min-width:24px;padding:0 2px;text-align:center;font-size:15px;font-variant-numeric:tabular-nums;color:var(--parch);cursor:pointer;transition:color .12s,transform .12s;}
+.note.q{color:var(--bad);opacity:.7;}       /* out-of-vocabulary / off-tune */
+.note.played{color:var(--muted);opacity:.55;}
+.note.active{color:var(--gold);transform:scale(1.3);text-shadow:0 0 12px var(--glow);}
+.empty{color:var(--muted);text-align:center;padding:24px;font-size:14px;}
+.foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);padding-top:14px;margin-top:6px;}
+.foot b{color:var(--parch);}
+@media (max-width:560px){h1{font-size:23px}.readout{margin-left:0}}
+@media (prefers-reduced-motion:reduce){.bar,.note{transition:none}.score{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Gamelan Practice</h1>
+    <p class="sub">Self-calibrating · teach it your instrument's own tuning, then play along</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab on" id="tabCal" data-view="cal">1 · Calibrate</button>
+    <button class="tab" id="tabPlay" data-view="play" disabled>2 · Play along</button>
+  </div>
+
+  <div id="msg" class="msg"></div>
+
+  <!-- ============ CALIBRATE ============ -->
+  <section id="view-cal">
+    <div class="panel">
+      <div class="row">
+        <label class="fld">Instrument name
+          <input type="text" id="instName" placeholder="e.g. My gendér panerus" value="My gamelan instrument">
+        </label>
+        <label class="fld">Voices (bars/keys)
+          <input type="number" id="voiceCount" min="1" max="40" value="14">
+        </label>
+      </div>
+      <div class="row radio">
+        <span class="hint" style="text-transform:none;letter-spacing:0;">How will you sample the tuning?</span>
+        <label><input type="radio" name="mode" value="sweep" checked> One sweep (strike each voice once, in order)</label>
+        <label><input type="radio" name="mode" value="voice"> One clip per voice</label>
+      </div>
+
+      <div id="sweepBox" class="row">
+        <label class="fld">Sweep order
+          <select id="sweepDir">
+            <option value="lohi">low → high</option>
+            <option value="hilo" selected>high → low</option>
+          </select>
+        </label>
+        <label class="drop">📎 <span id="sweepName">choose sweep audio…</span>
+          <input type="file" id="sweepFile" accept="audio/*,.wav,.mp3,.m4a,.m4b,.mp4,.aac,.flac,.aif,.aiff" hidden>
+        </label>
+        <button class="btn" id="analyzeSweep" disabled>Measure tuning</button>
+      </div>
+
+      <div id="voiceBox" class="row" style="display:none;flex-direction:column;align-items:stretch;">
+        <div id="voiceRows"></div>
+        <div><button class="btn" id="analyzeVoices">Measure tuning</button></div>
+      </div>
+
+      <div class="row" style="margin-top:4px;">
+        <button class="btn ghost" id="loadProfileBtn">Load saved instrument…</button>
+        <input type="file" id="profileFile" accept=".json,application/json" hidden>
+        <span class="hint" style="text-transform:none;letter-spacing:0;">Calibrate once, save the profile, reuse it next time.</span>
+      </div>
+    </div>
+
+    <div class="panel" id="resultPanel" style="display:none;">
+      <div class="hint" style="text-transform:none;letter-spacing:0;margin-bottom:4px;">
+        Measured tuning — edit the labels to match your numbering, then use it. A ⚠ means the sample was unclear; consider re-recording that voice.
+      </div>
+      <table class="cal" id="calTable"></table>
+      <div class="row" style="margin-top:14px;">
+        <button class="btn" id="useTuning">Use this tuning →</button>
+        <button class="btn ghost" id="downloadProfile">Download instrument profile</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PLAY ============ -->
+  <section id="view-play" style="display:none;">
+    <div class="panel">
+      <div class="controls">
+        <div><b id="instLabel" style="color:var(--gold)">—</b> <span class="hint" id="instMeta" style="text-transform:none;letter-spacing:0;"></span></div>
+        <label class="drop">📎 <span id="perfName">choose a performance to play along with…</span>
+          <input type="file" id="perfFile" accept="audio/*,.wav,.mp3,.m4a,.m4b,.mp4,.aac,.flac,.aif,.aiff" hidden>
+        </label>
+        <button class="btn ghost" id="analyzePerf" disabled>Transcribe</button>
+      </div>
+      <div class="controls" style="margin-top:12px;">
+        <button class="play" id="play" disabled>Play</button>
+        <label class="speed" style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:8px;">Speed
+          <input type="range" id="speed" min="0.5" max="1.25" step="0.05" value="1"><span id="speedVal" style="color:var(--parch)">1.00×</span></label>
+        <span class="readout" id="time">0:00 / 0:00</span>
+      </div>
+      <div class="seek" id="seek" title="click to seek"><div class="seek-fill" id="seekFill"></div></div>
+      <div class="bars" id="bars"></div>
+      <div class="caption" id="barsCap">the voices, low → high — lit as struck</div>
+    </div>
+    <div class="panel">
+      <div class="score" id="scoreScroll"><div id="score"><div class="empty">Load a performance and transcribe it to follow along.</div></div></div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <b>How it works:</b> every gamelan is tuned to itself, so this tool measures your instrument's fundamentals from the samples you give it — no scale assumed. Strikes in a performance are then snapped to your measured voices. A number in <span class="warn">this colour</span> is a strike that matched none of your voices well (an out-of-vocabulary sound — later this will help mark section breaks).<br>
+    Audio in: WAV, MP3, M4A/AAC/MP4, FLAC (and AIFF where your browser supports it).
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ===================== analysis engine (inlined) ===================== */
+function fft(re, im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){let bit=n>>1;for(;j&bit;bit>>=1)j^=bit;j^=bit;
+    if(i<j){const tr=re[i];re[i]=re[j];re[j]=tr;const ti=im[i];im[i]=im[j];im[j]=ti;}}
+  for(let len=2;len<=n;len<<=1){const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){let cr=1,ci=0;
+      for(let k=0;k<len/2;k++){const a=i+k,b=i+k+len/2;
+        const vr=re[b]*cr-im[b]*ci,vi=re[b]*ci+im[b]*cr;
+        re[b]=re[a]-vr;im[b]=im[a]-vi;re[a]+=vr;im[a]+=vi;
+        const ncr=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=ncr;}}}
+}
+function nextPow2(n){let p=1;while(p<n)p<<=1;return p;}
+function hann(N){const w=new Float64Array(N);for(let i=0;i<N;i++)w[i]=0.5-0.5*Math.cos(2*Math.PI*i/(N-1));return w;}
+function rfftMag(x,N){const re=new Float64Array(N),im=new Float64Array(N);const lim=Math.min(x.length,N);
+  for(let i=0;i<lim;i++)re[i]=x[i];fft(re,im);const half=(N>>1)+1,mag=new Float64Array(half);
+  for(let i=0;i<half;i++)mag[i]=Math.hypot(re[i],im[i]);return mag;}
+function movavg(a,size){const n=a.length,r=(size-1)>>1,out=new Float64Array(n);
+  for(let i=0;i<n;i++){let s=0;for(let k=-r;k<=r;k++){let j=i+k;if(j<0)j=-j-1;if(j>=n)j=2*n-j-1;if(j<0)j=0;else if(j>=n)j=n-1;s+=a[j];}out[i]=s/size;}return out;}
+
+function detectOnsets(x,sr,opts={}){
+  const sensitivity=opts.sensitivity??0.5,minGap=opts.minGap??0.09;
+  const win=2048,hop=512,w=hann(win);
+  const nf=1+Math.max(0,Math.floor((x.length-win)/hop));if(nf<2)return[];
+  const half=(win>>1)+1,mags=new Array(nf),rms=new Float64Array(nf),seg=new Float64Array(win);
+  for(let f=0;f<nf;f++){let s=0;for(let i=0;i<win;i++){const v=x[f*hop+i]||0;seg[i]=v*w[i];s+=v*v;}
+    rms[f]=Math.sqrt(s/win);const m=rfftMag(seg,win);const lm=new Float64Array(half);
+    for(let i=0;i<half;i++)lm[i]=Math.log1p(50*m[i]);mags[f]=lm;}
+  const flux=new Float64Array(nf);
+  for(let f=1;f<nf;f++){let s=0;const a=mags[f],b=mags[f-1];for(let i=0;i<half;i++){const d=a[i]-b[i];if(d>0)s+=d;}flux[f]=s;}
+  let mx=0;for(let f=0;f<nf;f++)if(flux[f]>mx)mx=flux[f];if(mx>0)for(let f=0;f<nf;f++)flux[f]/=mx;
+  const wf=Math.max(3,Math.round(0.10*sr/hop));const local=movavg(flux,wf*2+1);
+  const mult=2.6-1.9*sensitivity,delta=0.14-0.11*sensitivity,rmsGate=Math.max(0.02,0.04*(1-sensitivity)+0.01);
+  const gap=Math.max(1,Math.round(minGap*sr/hop)),onsets=[];
+  for(let f=1;f<nf-1;f++){const thr=local[f]*mult+delta;
+    if(flux[f]>thr&&flux[f]>=flux[f-1]&&flux[f]>=flux[f+1]&&rms[f]>rmsGate){
+      if(onsets.length&&(f-onsets[onsets.length-1][0])<gap){if(flux[f]>onsets[onsets.length-1][1])onsets[onsets.length-1]=[f,flux[f]];}
+      else onsets.push([f,flux[f]]);}}
+  return onsets.map(([f])=>f*hop/sr);
+}
+function estimateF0(x,sr,t0,t1,opts={}){
+  const attackSkip=opts.attackSkip??0.04,maxDur=opts.maxDur??0.45,guard=opts.guard??0.02,fLo=opts.fLo??250,fHi=opts.fHi??2200;
+  let a=Math.floor((t0+attackSkip)*sr);
+  let b=Math.min(Math.floor((t0+maxDur)*sr),Math.floor((t1-guard)*sr),x.length);
+  let seg=x.subarray(a,Math.max(a,b));
+  if(seg.length<Math.floor(0.022*sr)){const a2=Math.floor(t0*sr),b2=Math.min(a2+Math.floor(0.03*sr),x.length);
+    seg=x.subarray(a2,Math.max(a2,b2));if(seg.length<256)return null;}
+  const w=hann(seg.length),sw=new Float64Array(seg.length);for(let i=0;i<seg.length;i++)sw[i]=seg[i]*w[i];
+  const N=nextPow2(seg.length)*8,mag=rfftMag(sw,N),binHz=sr/N;
+  const lo=Math.ceil(fLo/binHz),hi=Math.floor(fHi/binHz);if(hi<=lo+1)return null;
+  let pk=lo,best=-1;for(let i=lo;i<hi;i++)if(mag[i]>best){best=mag[i];pk=i;}
+  let dd=0;if(pk>0&&pk<mag.length-1){const al=Math.log(mag[pk-1]+1e-12),a0=Math.log(mag[pk]+1e-12),ar=Math.log(mag[pk+1]+1e-12);
+    const den=al-2*a0+ar;dd=den!==0?0.5*(al-ar)/den:0;}
+  return (pk+dd)*binHz;
+}
+function snap(f0,refFreqs,offTuneCents=45){
+  if(f0==null||f0<=0)return null;
+  const nearest=(c)=>{let j=0,ba=Infinity,be=0;for(let i=0;i<refFreqs.length;i++){const e=1200*Math.log2(c/refFreqs[i]);const av=Math.abs(e);if(av<ba){ba=av;j=i;be=e;}}return[j,be];};
+  let [j,err]=nearest(f0),used=f0;
+  if(Math.abs(err)>offTuneCents){for(const cand of[f0/2,f0*2,f0/3,f0*3]){const[j2,e2]=nearest(cand);if(Math.abs(e2)<Math.abs(err)){j=j2;err=e2;used=cand;}}}
+  return {index:j,refHz:refFreqs[j],cents:err,usedHz:used,flag:Math.abs(err)>offTuneCents?'?':''};
+}
+function measureTone(x,sr,opts={}){
+  const fLo=opts.fLo??70,fHi=opts.fHi??4500,dur=x.length/sr;
+  const f0=estimateF0(x,sr,0,dur,{attackSkip:0.02,maxDur:Math.min(0.6,dur),guard:0,fLo,fHi});
+  if(!f0)return{f0:null,quality:0};
+  const a=Math.floor(0.02*sr),b=Math.min(a+Math.floor(0.5*sr),x.length),seg=x.subarray(a,Math.max(a,b));
+  const w=hann(seg.length),sw=new Float64Array(seg.length);for(let i=0;i<seg.length;i++)sw[i]=seg[i]*w[i];
+  const N=nextPow2(seg.length)*4,mag=rfftMag(sw,N),binHz=sr/N;
+  const lo=Math.ceil(fLo/binHz),hi=Math.min(mag.length-1,Math.floor(fHi/binHz));
+  let peak=0;const band=[];for(let i=lo;i<hi;i++){band.push(mag[i]);if(mag[i]>peak)peak=mag[i];}
+  band.sort((p,q)=>p-q);const med=band.length?band[band.length>>1]:1e-9;
+  return {f0,quality:peak/(med+1e-9)};
+}
+function calibrateFromSweep(x,sr,opts={}){
+  const onsets=detectOnsets(x,sr,{sensitivity:opts.sensitivity??0.30,minGap:opts.minGap??0.40});
+  const fLo=opts.fLo??70,fHi=opts.fHi??4500,bars=[];
+  for(let i=0;i<onsets.length;i++){const t1=i+1<onsets.length?onsets[i+1]:onsets[i]+1.0;
+    const f0=estimateF0(x,sr,onsets[i],t1,{fLo,fHi});
+    if(f0){ // quality from a short window at this onset
+      const a=Math.floor((onsets[i]+0.02)*sr),b=Math.min(a+Math.floor(0.4*sr),x.length);
+      const q=measureTone(x.subarray(a,Math.max(a,b)),sr,{fLo,fHi}).quality;
+      bars.push({t:onsets[i],f0,quality:q});}}
+  return bars;
+}
+function transcribe(x,sr,refFreqs,opts={}){
+  const onsets=detectOnsets(x,sr,{sensitivity:opts.sensitivity??0.5,minGap:opts.minGap??0.09});
+  const fLo=opts.fLo??Math.min.apply(null,refFreqs)/1.06,fHi=opts.fHi??Math.max.apply(null,refFreqs)*1.06,notes=[];
+  for(let i=0;i<onsets.length;i++){const t1=i+1<onsets.length?onsets[i+1]:onsets[i]+1.0;
+    const f0=estimateF0(x,sr,onsets[i],t1,{fLo,fHi});notes.push({t:onsets[i],f0,snap:snap(f0,refFreqs)});}
+  return notes;
+}
+
+/* ===================== audio decode (any supported format) ===================== */
+async function decodeFile(file){
+  const buf=await file.arrayBuffer();
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+  const ctx=new Ctx();
+  try{
+    const ab=await ctx.decodeAudioData(buf.slice(0));
+    let mono;
+    if(ab.numberOfChannels>1){mono=new Float32Array(ab.length);
+      for(let c=0;c<ab.numberOfChannels;c++){const d=ab.getChannelData(c);for(let i=0;i<ab.length;i++)mono[i]+=d[i]/ab.numberOfChannels;}}
+    else mono=ab.getChannelData(0).slice(0);
+    return {samples:mono,sr:ab.sampleRate};
+  }catch(e){
+    throw new Error('Could not decode "'+file.name+'". Your browser may not support this format here — try WAV, MP3, M4A/AAC, or FLAC.');
+  }finally{ if(ctx.close) ctx.close(); }
+}
+
+/* ===================== app ===================== */
+const $=s=>document.querySelector(s);
+const msg=(t,kind)=>{const m=$('#msg');m.textContent=t;m.className='msg '+(kind||'info');};
+const clearMsg=()=>{$('#msg').className='msg';};
+function fmt(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}
+
+// current instrument: {name, voices:[{label,f0,quality}]} sorted low->high; refFreqs parallel
+let instrument=null;
+let calVoices=null; // working measurement before "use"
+
+// ---- tabs ----
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  if(t.disabled)return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on');
+  $('#view-cal').style.display = t.dataset.view==='cal'?'':'none';
+  $('#view-play').style.display= t.dataset.view==='play'?'':'none';
+}));
+
+// ---- mode toggle ----
+document.querySelectorAll('input[name=mode]').forEach(r=>r.addEventListener('change',e=>{
+  const sweep=e.target.value==='sweep';
+  $('#sweepBox').style.display=sweep?'':'none';
+  $('#voiceBox').style.display=sweep?'none':'flex';
+  if(!sweep) buildVoiceRows();
+}));
+function buildVoiceRows(){
+  const n=Math.max(1,Math.min(40,parseInt($('#voiceCount').value)||1));
+  const box=$('#voiceRows');box.innerHTML='';
+  for(let i=0;i<n;i++){
+    const row=document.createElement('div');row.className='row';row.style.margin='6px 0';
+    row.innerHTML='<label class="fld" style="flex-direction:row;align-items:center;gap:6px;">label '+
+      '<input type="text" class="vlabel" style="width:70px;min-width:0" value="'+(i+1)+'"></label>'+
+      '<label class="drop">📎 <span class="vname">voice '+(i+1)+' clip…</span>'+
+      '<input type="file" class="vfile" accept="audio/*,.wav,.mp3,.m4a,.m4b,.mp4,.aac,.flac,.aif,.aiff" hidden></label>';
+    box.appendChild(row);
+  }
+  box.querySelectorAll('.vfile').forEach(inp=>inp.addEventListener('change',e=>{
+    const s=e.target.closest('.row').querySelector('.vname');
+    if(e.target.files[0]) s.textContent=e.target.files[0].name;
+  }));
+}
+$('#voiceCount').addEventListener('change',()=>{ if($('input[name=mode]:checked').value==='voice') buildVoiceRows(); });
+
+// ---- sweep file ----
+$('#sweepFile').addEventListener('change',e=>{
+  if(e.target.files[0]){ $('#sweepName').textContent=e.target.files[0].name; $('#analyzeSweep').disabled=false; }
+});
+$('#analyzeSweep').addEventListener('click',async()=>{
+  const f=$('#sweepFile').files[0]; if(!f)return;
+  clearMsg(); $('#analyzeSweep').disabled=true; $('#analyzeSweep').textContent='Measuring…';
+  try{
+    const {samples,sr}=await decodeFile(f);
+    const bars=calibrateFromSweep(samples,sr);
+    let voices=bars.map(b=>({f0:b.f0,quality:b.quality}));
+    voices.sort((a,b)=>a.f0-b.f0);                 // low -> high
+    const expected=parseInt($('#voiceCount').value)||voices.length;
+    const dir=$('#sweepDir').value;
+    // default labels 1..N in pitch order (user edits). If hi->lo sweep, playing order was reversed; labels still by pitch.
+    voices.forEach((v,i)=>v.label=String(i+1));
+    calVoices=voices;
+    renderResults(voices, expected, bars.length, dir);
+  }catch(err){ msg(err.message,'err'); }
+  finally{ $('#analyzeSweep').disabled=false; $('#analyzeSweep').textContent='Measure tuning'; }
+});
+
+// ---- per-voice files ----
+$('#analyzeVoices').addEventListener('click',async()=>{
+  clearMsg();
+  const rows=[...$('#voiceRows').querySelectorAll('.row')];
+  const missing=rows.filter(r=>!r.querySelector('.vfile').files[0]);
+  if(missing.length){ msg('Add a clip for every voice ('+missing.length+' still empty).','err'); return; }
+  $('#analyzeVoices').disabled=true; $('#analyzeVoices').textContent='Measuring…';
+  try{
+    const voices=[];
+    for(const r of rows){
+      const f=r.querySelector('.vfile').files[0];
+      const label=r.querySelector('.vlabel').value||'?';
+      const {samples,sr}=await decodeFile(f);
+      const {f0,quality}=measureTone(samples,sr);
+      voices.push({label,f0,quality});
+    }
+    voices.sort((a,b)=>(a.f0||0)-(b.f0||0));
+    calVoices=voices;
+    renderResults(voices, voices.length, voices.length, null);
+  }catch(err){ msg(err.message,'err'); }
+  finally{ $('#analyzeVoices').disabled=false; $('#analyzeVoices').textContent='Measure tuning'; }
+});
+
+function renderResults(voices, expected, detected, dir){
+  const t=$('#calTable');
+  const qs=voices.map(v=>v.quality||0).filter(q=>q>0).sort((a,b)=>a-b);
+  const qmed=qs.length?qs[qs.length>>1]:1;
+  let rows='<tr><th>#</th><th>label</th><th>Hz</th><th>interval</th><th>quality</th></tr>';
+  voices.forEach((v,i)=>{
+    const prev=i>0?voices[i-1].f0:null;
+    const iv=prev&&v.f0?Math.round(1200*Math.log2(v.f0/prev)):null;
+    const q=v.quality||0;
+    const bad=q>0&&q<qmed*0.25;
+    const qw=Math.max(6,Math.min(90,Math.round(90*Math.min(1,q/(qmed*1.5||1)))));
+    rows+='<tr>'+
+      '<td>'+(i+1)+'</td>'+
+      '<td><input class="lbl" data-i="'+i+'" value="'+(v.label||'')+'"></td>'+
+      '<td>'+(v.f0?v.f0.toFixed(1):'—')+'</td>'+
+      '<td class="'+(iv!=null?'':'')+'">'+(iv!=null?('+'+iv+'¢'):'—')+'</td>'+
+      '<td>'+(v.f0?('<span class="q" style="width:'+qw+'px"></span> '+(bad?'<span class="warn">⚠ unclear</span>':'<span class="ok">ok</span>')):'<span class="warn">no tone</span>')+'</td>'+
+      '</tr>';
+  });
+  t.innerHTML=rows;
+  t.querySelectorAll('.lbl').forEach(inp=>inp.addEventListener('input',e=>{ calVoices[+e.target.dataset.i].label=e.target.value; }));
+  $('#resultPanel').style.display='';
+  if(detected!==expected){
+    msg('Detected '+detected+' strikes but you expected '+expected+'. If the sweep had extra noise or missed a bar, re-record it more cleanly (one clear strike per voice) — or just relabel below.','err');
+  } else { clearMsg(); }
+  $('#resultPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+// ---- use tuning ----
+$('#useTuning').addEventListener('click',()=>{
+  if(!calVoices||!calVoices.some(v=>v.f0)){ msg('No usable tuning to apply.','err'); return; }
+  const voices=calVoices.filter(v=>v.f0).map(v=>({label:v.label||'?',f0:v.f0,quality:v.quality||0}));
+  voices.sort((a,b)=>a.f0-b.f0);
+  instrument={name:$('#instName').value||'Instrument',voices};
+  $('#tabPlay').disabled=false;
+  $('#instLabel').textContent=instrument.name;
+  $('#instMeta').textContent='· '+voices.length+' voices, '+voices[0].f0.toFixed(0)+'–'+voices[voices.length-1].f0.toFixed(0)+' Hz';
+  buildBars();
+  $('#tabPlay').click();
+  msg('Tuning set for “'+instrument.name+'”. Load a performance to play along.','info');
+});
+
+// ---- profile download / load ----
+$('#downloadProfile').addEventListener('click',()=>{
+  const src=instrument||(calVoices?{name:$('#instName').value,voices:calVoices.filter(v=>v.f0).map(v=>({label:v.label,f0:v.f0}))}:null);
+  if(!src){ msg('Nothing to save yet.','err'); return; }
+  const data={format:'gamelan-instrument',version:1,name:src.name,
+    voices:src.voices.slice().sort((a,b)=>a.f0-b.f0).map(v=>({label:v.label,hz:+v.f0.toFixed(2)}))};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=(src.name||'instrument').replace(/[^\w.-]+/g,'_')+'.gamelan.json';a.click();
+});
+$('#loadProfileBtn').addEventListener('click',()=>$('#profileFile').click());
+$('#profileFile').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f)return; clearMsg();
+  try{
+    const d=JSON.parse(await f.text());
+    if(!d.voices||!d.voices.length) throw new Error('no voices in file');
+    const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0})).sort((a,b)=>a.f0-b.f0);
+    instrument={name:d.name||'Instrument',voices};
+    calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0}));
+    renderResults(voices,voices.length,voices.length,null);
+    $('#tabPlay').disabled=false;$('#instLabel').textContent=instrument.name;
+    $('#instMeta').textContent='· '+voices.length+' voices, '+voices[0].f0.toFixed(0)+'–'+voices[voices.length-1].f0.toFixed(0)+' Hz';
+    buildBars();
+    msg('Loaded “'+instrument.name+'”. Go to Play along, or re-measure to update it.','info');
+  }catch(err){ msg('Could not read that profile ('+err.message+').','err'); }
+});
+
+/* ===================== play view ===================== */
+const audio=new Audio();
+let notes=[], times=[], noteEls=[], barEls=[], lastIdx=-1, lastTop=-1, raf=0;
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function buildBars(){
+  const wrap=$('#bars');wrap.innerHTML='';barEls=[];
+  if(!instrument)return; const n=instrument.voices.length;
+  instrument.voices.forEach((v,i)=>{
+    const el=document.createElement('div');el.className='bar';
+    const f=n>1?i/(n-1):0;el.style.width=(24-f*10)+'px';el.style.height=(84-f*46)+'px';
+    el.title=v.label+' · '+v.f0.toFixed(1)+' Hz';
+    const lab=document.createElement('span');lab.className='blab';lab.textContent=v.label;el.appendChild(lab);
+    wrap.appendChild(el);barEls[i]=el;
+  });
+}
+$('#perfFile').addEventListener('change',e=>{
+  if(e.target.files[0]){ $('#perfName').textContent=e.target.files[0].name; $('#analyzePerf').disabled=false; }
+});
+$('#analyzePerf').addEventListener('click',async()=>{
+  const f=$('#perfFile').files[0]; if(!f||!instrument)return; clearMsg();
+  $('#analyzePerf').disabled=true;$('#analyzePerf').textContent='Transcribing…';
+  try{
+    const {samples,sr}=await decodeFile(f);
+    const refs=instrument.voices.map(v=>v.f0);
+    notes=transcribe(samples,sr,refs);
+    times=notes.map(n=>n.t);
+    if(audio.src) URL.revokeObjectURL(audio.src);
+    audio.src=URL.createObjectURL(f);
+    buildScore();
+    $('#play').disabled=false; lastIdx=-1; lastTop=-1; $('#seekFill').style.width='0%';
+    msg('Transcribed '+notes.length+' strikes. Press play.','info');
+  }catch(err){ msg(err.message,'err'); }
+  finally{ $('#analyzePerf').disabled=false;$('#analyzePerf').textContent='Transcribe'; }
+});
+function buildScore(){
+  const sc=$('#score');sc.innerHTML='';noteEls=[];
+  const row=document.createElement('div');row.className='notes';let g=null;
+  notes.forEach((nt,i)=>{
+    if(i%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
+    const lab = nt.snap && nt.snap.flag!=='?' ? instrument.voices[nt.snap.index].label : '·';
+    const el=document.createElement('span');el.className='note'+(nt.snap&&nt.snap.flag==='?'?' q':'');
+    el.textContent=lab;
+    el.addEventListener('click',()=>{ if(!audio.src)return; audio.currentTime=nt.t; if(audio.paused) togglePlay(); });
+    g.appendChild(el);noteEls[i]=el;
+  });
+  sc.appendChild(row);
+}
+function paint(idx){for(let j=0;j<noteEls.length;j++){const e=noteEls[j];if(!e)continue;
+  e.classList.toggle('played',j<idx);e.classList.toggle('active',j===idx);}}
+function flashBar(i){const nt=notes[i];if(!nt||!nt.snap||nt.snap.flag==='?')return;const el=barEls[nt.snap.index];if(!el)return;
+  el.classList.add('hit');setTimeout(()=>el.classList.remove('hit'),reduce?55:95);}
+function activeIndex(t){let lo=0,hi=times.length-1,ans=-1;while(lo<=hi){const m=(lo+hi)>>1;if(times[m]<=t){ans=m;lo=m+1;}else hi=m-1;}return ans;}
+function scrollTo(el){const box=$('#scoreScroll'),br=box.getBoundingClientRect(),er=el.getBoundingClientRect();box.scrollTop+=(er.top-br.top)-box.clientHeight/2+er.height/2;}
+function tick(){
+  const t=audio.currentTime,dur=audio.duration||1;
+  $('#seekFill').style.width=(100*Math.min(1,Math.max(0,t/dur)))+'%';
+  $('#time').textContent=fmt(t)+' / '+fmt(audio.duration);
+  const idx=activeIndex(t);
+  if(idx!==lastIdx){
+    if(idx>lastIdx&&idx-lastIdx<=8){for(let j=lastIdx+1;j<=idx;j++)flashBar(j);}else if(idx>=0)flashBar(idx);
+    paint(idx);const el=noteEls[idx];
+    if(el){const top=el.offsetTop;if(Math.abs(top-lastTop)>3){scrollTo(el);lastTop=top;}}
+    lastIdx=idx;
+  }
+  if(!audio.paused) raf=requestAnimationFrame(tick);
+}
+function togglePlay(){if(!audio.src)return;
+  if(audio.paused){audio.play();$('#play').textContent='Pause';cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);}
+  else{audio.pause();$('#play').textContent='Play';}}
+$('#play').addEventListener('click',togglePlay);
+audio.addEventListener('ended',()=>{$('#play').textContent='Play';});
+audio.addEventListener('pause',()=>{if($('#play').textContent!=='Play')$('#play').textContent='Play';});
+$('#seek').addEventListener('click',function(e){if(!audio.src)return;const r=this.getBoundingClientRect();
+  const frac=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));audio.currentTime=frac*(audio.duration||0);
+  $('#seekFill').style.width=(100*frac)+'%';});
+$('#speed').addEventListener('input',e=>{const v=parseFloat(e.target.value);audio.playbackRate=v;$('#speedVal').textContent=v.toFixed(2)+'×';});
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!$('#play').disabled&&$('#view-play').style.display!=='none'){e.preventDefault();togglePlay();}});
+</script>
+</body>
+</html>
