@@ -42,6 +42,12 @@ table.cal th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-s
 table.cal td{padding:6px 8px;border-bottom:1px solid #2a2016;font-variant-numeric:tabular-nums;}
 table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--gold);width:74px;padding:4px 6px;font-size:14px;font-weight:600;text-align:center;}
 .q{display:inline-block;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--bronze2),var(--gold));vertical-align:middle;}
+.rowbtns{white-space:nowrap;text-align:right;}
+.ibtn{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--parch);cursor:pointer;font-size:12px;padding:3px 8px;margin-left:4px;line-height:1;}
+.ibtn:hover:not(:disabled){border-color:var(--bronze);}
+.ibtn:disabled{opacity:.35;cursor:not-allowed;}
+.ibtn.prev.played{color:var(--gold);}
+.ibtn.del{color:var(--bad);}
 .warn{color:var(--bad);font-weight:600;}
 .ok{color:var(--gold);}
 .msg{margin:10px 0;padding:10px 12px;border-radius:8px;font-size:13px;display:none;}
@@ -135,9 +141,17 @@ table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6p
       <div class="hint" style="text-transform:none;letter-spacing:0;margin-bottom:4px;">
         Measured tuning — edit the labels to match your numbering, then use it. A ⚠ means the sample was unclear; consider re-recording that voice.
       </div>
+      <div class="row" id="sensRow" style="display:none;align-items:center;">
+        <label class="fld" style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;">Detection sensitivity
+          <input type="range" id="calSens" min="0.15" max="0.55" step="0.05" value="0.30" style="width:150px;accent-color:var(--bronze)">
+          <span id="calSensVal" style="color:var(--parch);font-variant-numeric:tabular-nums">0.30</span>
+        </label>
+        <span class="hint" style="text-transform:none;letter-spacing:0;">lower = fewer tones, higher = more — re-measures the sweep on release</span>
+      </div>
       <table class="cal" id="calTable"></table>
       <div class="row" style="margin-top:14px;">
         <button class="btn" id="useTuning">Use this tuning →</button>
+        <button class="btn ghost" id="renumber">Renumber 1…N</button>
         <button class="btn ghost" id="downloadProfile">Download instrument profile</button>
       </div>
     </div>
@@ -291,10 +305,53 @@ const $=s=>document.querySelector(s);
 const msg=(t,kind)=>{const m=$('#msg');m.textContent=t;m.className='msg '+(kind||'info');};
 const clearMsg=()=>{$('#msg').className='msg';};
 function fmt(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s;}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function playSeg(samples,sr){
+  try{
+    if(!previewCtx) previewCtx=new (window.AudioContext||window.webkitAudioContext)();
+    if(previewCtx.state==='suspended') previewCtx.resume();
+    const arr = samples instanceof Float32Array ? samples : Float32Array.from(samples);
+    const buf=previewCtx.createBuffer(1, arr.length, sr||44100);
+    if(buf.copyToChannel) buf.copyToChannel(arr,0); else buf.getChannelData(0).set(arr);
+    const src=previewCtx.createBufferSource(); src.buffer=buf; src.connect(previewCtx.destination); src.start();
+  }catch(e){ msg('Preview failed: '+e.message,'err'); }
+}
+// Detections within this many cents are the SAME voice (a bar struck twice), not
+// two keys — real gamelan bars sit >~100 cents apart. Kept conservative.
+const MERGE_CENTS = 25;
+function mergeClose(voices, thr){
+  if(voices.length<2) return {voices, merged:0};
+  const out=[voices[0]]; let merged=0;
+  for(let i=1;i<voices.length;i++){
+    const last=out[out.length-1];
+    const c=Math.abs(1200*Math.log2(voices[i].f0/last.f0));
+    if(c<=thr){ merged++; if((voices[i].quality||0)>(last.quality||0)) out[out.length-1]=voices[i]; }
+    else out.push(voices[i]);
+  }
+  return {voices:out, merged};
+}
+function voicesFromSweep(samples, sr, sensitivity){
+  const bars=calibrateFromSweep(samples, sr, {sensitivity});   // temporal order [{t,f0,quality}]
+  let voices=bars.map((b,i)=>{
+    const start=b.t, end=(i+1<bars.length?bars[i+1].t:b.t+1.0);
+    const segdur=Math.min(1.2, Math.max(0.15, end-start));
+    const a=Math.floor(start*sr), bb=Math.min(Math.floor((start+segdur)*sr), samples.length);
+    return {f0:b.f0, quality:b.quality, seg:samples.slice(a, Math.max(a+1,bb)), sr, previewed:false};
+  });
+  voices.sort((a,b)=>a.f0-b.f0);                    // low -> high
+  const mg=mergeClose(voices, MERGE_CENTS);         // fold same-bar double detections
+  voices=mg.voices;
+  voices.forEach((v,i)=>v.label=String(i+1));       // default labels by pitch; user edits
+  return {voices, merged:mg.merged};
+}
 
 // current instrument: {name, voices:[{label,f0,quality}]} sorted low->high; refFreqs parallel
 let instrument=null;
 let calVoices=null; // working measurement before "use"
+let expectedVoices=0;   // for the count-mismatch warning
+let previewCtx=null;    // Web Audio context for voice previews
+let sweepSamples=null, sweepSr=0;   // retained decoded sweep, for re-measuring
+let calMode='sweep';                // 'sweep' | 'voice' | 'loaded'
 
 // ---- tabs ----
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
@@ -339,15 +396,14 @@ $('#analyzeSweep').addEventListener('click',async()=>{
   clearMsg(); $('#analyzeSweep').disabled=true; $('#analyzeSweep').textContent='Measuring…';
   try{
     const {samples,sr}=await decodeFile(f);
-    const bars=calibrateFromSweep(samples,sr);
-    let voices=bars.map(b=>({f0:b.f0,quality:b.quality}));
-    voices.sort((a,b)=>a.f0-b.f0);                 // low -> high
-    const expected=parseInt($('#voiceCount').value)||voices.length;
-    const dir=$('#sweepDir').value;
-    // default labels 1..N in pitch order (user edits). If hi->lo sweep, playing order was reversed; labels still by pitch.
-    voices.forEach((v,i)=>v.label=String(i+1));
+    sweepSamples=samples; sweepSr=sr; calMode='sweep';
+    const sens=parseFloat(($('#calSens')||{}).value)||0.30;
+    const {voices,merged}=voicesFromSweep(samples,sr,sens);
     calVoices=voices;
-    renderResults(voices, expected, bars.length, dir);
+    expectedVoices=parseInt($('#voiceCount').value)||voices.length;
+    renderResults();
+    if(merged>0 && calVoices.length===expectedVoices)
+      msg('Folded '+merged+' near-identical detection'+(merged>1?'s':'')+' (within '+MERGE_CENTS+'\u00a2 \u2014 the same bar caught twice), keeping the cleaner take. '+voices.length+' voices.','info');
   }catch(err){ msg(err.message,'err'); }
   finally{ $('#analyzeSweep').disabled=false; $('#analyzeSweep').textContent='Measure tuning'; }
 });
@@ -366,41 +422,65 @@ $('#analyzeVoices').addEventListener('click',async()=>{
       const label=r.querySelector('.vlabel').value||'?';
       const {samples,sr}=await decodeFile(f);
       const {f0,quality}=measureTone(samples,sr);
-      voices.push({label,f0,quality});
+      const seg=samples.subarray(0, Math.min(samples.length, Math.floor(2.0*sr))).slice(0);
+      voices.push({label,f0,quality,seg,sr,previewed:false});
     }
     voices.sort((a,b)=>(a.f0||0)-(b.f0||0));
-    calVoices=voices;
-    renderResults(voices, voices.length, voices.length, null);
+    calVoices=voices; calMode='voice';
+    expectedVoices=voices.length;
+    renderResults();
   }catch(err){ msg(err.message,'err'); }
   finally{ $('#analyzeVoices').disabled=false; $('#analyzeVoices').textContent='Measure tuning'; }
 });
 
-function renderResults(voices, expected, detected, dir){
+function renderResults(){
   const t=$('#calTable');
-  const qs=voices.map(v=>v.quality||0).filter(q=>q>0).sort((a,b)=>a-b);
+  const qs=calVoices.map(v=>v.quality||0).filter(q=>q>0).sort((a,b)=>a-b);
   const qmed=qs.length?qs[qs.length>>1]:1;
-  let rows='<tr><th>#</th><th>label</th><th>Hz</th><th>interval</th><th>quality</th></tr>';
-  voices.forEach((v,i)=>{
-    const prev=i>0?voices[i-1].f0:null;
+  let rows='<tr><th>#</th><th>label</th><th>Hz</th><th>interval</th><th>quality</th><th></th></tr>';
+  calVoices.forEach((v,i)=>{
+    const prev=i>0?calVoices[i-1].f0:null;
     const iv=prev&&v.f0?Math.round(1200*Math.log2(v.f0/prev)):null;
     const q=v.quality||0;
     const bad=q>0&&q<qmed*0.25;
     const qw=Math.max(6,Math.min(90,Math.round(90*Math.min(1,q/(qmed*1.5||1)))));
+    const qcell = v.f0 ? ('<span class="q" style="width:'+qw+'px"></span> '+(bad?'<span class="warn">⚠ unclear</span>':'<span class="ok">ok</span>')) : '<span class="warn">no tone</span>';
+    const canPrev = !!v.seg;
+    const canDel = !v.seg || v.previewed;   // gate: you must hear a measured tone before removing it
     rows+='<tr>'+
       '<td>'+(i+1)+'</td>'+
-      '<td><input class="lbl" data-i="'+i+'" value="'+(v.label||'')+'"></td>'+
+      '<td><input class="lbl" data-i="'+i+'" value="'+esc(v.label||'')+'"></td>'+
       '<td>'+(v.f0?v.f0.toFixed(1):'—')+'</td>'+
-      '<td class="'+(iv!=null?'':'')+'">'+(iv!=null?('+'+iv+'¢'):'—')+'</td>'+
-      '<td>'+(v.f0?('<span class="q" style="width:'+qw+'px"></span> '+(bad?'<span class="warn">⚠ unclear</span>':'<span class="ok">ok</span>')):'<span class="warn">no tone</span>')+'</td>'+
+      '<td>'+(iv!=null?('+'+iv+'¢'):'—')+'</td>'+
+      '<td>'+qcell+'</td>'+
+      '<td class="rowbtns">'+
+        '<button class="ibtn prev'+(v.previewed?' played':'')+'" data-i="'+i+'"'+(canPrev?'':' disabled')+' title="preview this voice">▶</button>'+
+        '<button class="ibtn del" data-i="'+i+'"'+(canDel?'':' disabled')+' title="'+(canDel?'remove this voice':'preview it first, then delete')+'">🗑</button>'+
+      '</td>'+
       '</tr>';
   });
   t.innerHTML=rows;
   t.querySelectorAll('.lbl').forEach(inp=>inp.addEventListener('input',e=>{ calVoices[+e.target.dataset.i].label=e.target.value; }));
+  t.querySelectorAll('.prev').forEach(b=>b.addEventListener('click',()=>{
+    const i=+b.dataset.i, v=calVoices[i]; if(!v||!v.seg)return;
+    playSeg(v.seg, v.sr); v.previewed=true; b.classList.add('played');
+    const del=t.querySelector('.del[data-i="'+i+'"]'); if(del) del.disabled=false;
+  }));
+  t.querySelectorAll('.del').forEach(b=>b.addEventListener('click',()=>{
+    const i=+b.dataset.i, v=calVoices[i]; if(!v)return;
+    if(v.seg && !v.previewed) return;      // enforce the preview-first gate
+    calVoices.splice(i,1); renderResults();
+  }));
   $('#resultPanel').style.display='';
-  if(detected!==expected){
-    msg('Detected '+detected+' strikes but you expected '+expected+'. If the sweep had extra noise or missed a bar, re-record it more cleanly (one clear strike per voice) — or just relabel below.','err');
-  } else { clearMsg(); }
+  $('#sensRow').style.display = (calMode==='sweep' && sweepSamples) ? 'flex' : 'none';
+  updateCalWarning();
   $('#resultPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function updateCalWarning(){
+  const n=calVoices.length;
+  if(expectedVoices && n!==expectedVoices)
+    msg('Now '+n+' voices, but you expected '+expectedVoices+'. Preview any extra or errant tone and delete it (the trash button unlocks once you\u2019ve heard it), or change the voice count above.','err');
+  else clearMsg();
 }
 
 // ---- use tuning ----
@@ -415,6 +495,22 @@ $('#useTuning').addEventListener('click',()=>{
   buildBars();
   $('#tabPlay').click();
   msg('Tuning set for “'+instrument.name+'”. Load a performance to play along.','info');
+});
+$('#renumber').addEventListener('click',()=>{
+  if(!calVoices||!calVoices.length)return;
+  calVoices.sort((a,b)=>(a.f0||0)-(b.f0||0));
+  calVoices.forEach((v,i)=>v.label=String(i+1));
+  renderResults();
+});
+$('#calSens').addEventListener('input',()=>{ $('#calSensVal').textContent=parseFloat($('#calSens').value).toFixed(2); });
+$('#calSens').addEventListener('change',()=>{
+  if(calMode!=='sweep'||!sweepSamples)return;
+  const s=parseFloat($('#calSens').value);
+  const {voices,merged}=voicesFromSweep(sweepSamples,sweepSr,s);
+  calVoices=voices; renderResults();
+  const n=calVoices.length;
+  if(!(expectedVoices && n!==expectedVoices))
+    msg('Re-measured at sensitivity '+s.toFixed(2)+' → '+n+' voices'+(merged>0?(' ('+merged+' folded)'):'')+'.','info');
 });
 
 // ---- profile download / load ----
@@ -435,8 +531,9 @@ $('#profileFile').addEventListener('change',async e=>{
     if(!d.voices||!d.voices.length) throw new Error('no voices in file');
     const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0})).sort((a,b)=>a.f0-b.f0);
     instrument={name:d.name||'Instrument',voices};
-    calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0}));
-    renderResults(voices,voices.length,voices.length,null);
+    calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0,previewed:false}));
+    calMode='loaded'; expectedVoices=calVoices.length;
+    renderResults();
     $('#tabPlay').disabled=false;$('#instLabel').textContent=instrument.name;
     $('#instMeta').textContent='· '+voices.length+' voices, '+voices[0].f0.toFixed(0)+'–'+voices[voices.length-1].f0.toFixed(0)+' Hz';
     buildBars();
