@@ -61,7 +61,11 @@ table.cal th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-s
 table.cal td{padding:6px 8px;border-bottom:1px solid #2a2016;font-variant-numeric:tabular-nums;}
 table.cal input{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--gold);width:74px;padding:4px 6px;font-size:14px;font-weight:600;text-align:center;}
 table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--gold);padding:4px 6px;font-size:14px;font-weight:600;text-align:center;}
-.q{display:inline-block;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--bronze2),var(--gold));vertical-align:middle;}
+/* Scoped to the table it belongs to. Unscoped, this collided with .note.q — the
+   out-of-vocabulary marker in the score — and turned those notes into 7px bronze
+   pills instead of rust-coloured numbers. Only visible when a transcription has
+   several off-tune notes, which is why it went unnoticed. */
+table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--bronze2),var(--gold));vertical-align:middle;}
 .rowbtns{white-space:nowrap;text-align:right;}
 .ibtn{background:#160f0a;border:1px solid var(--line);border-radius:6px;color:var(--parch);cursor:pointer;font-size:12px;padding:3px 8px;margin-left:4px;line-height:1;}
 .ibtn:hover:not(:disabled){border-color:var(--bronze);}
@@ -107,6 +111,31 @@ table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radi
 .bar .blab .d{font-size:9px;line-height:10px;color:rgba(38,24,8,.65);font-weight:700;}
 .bar .blab .dots{display:flex;gap:1px;height:3px;align-items:center;justify-content:center;}
 .bar .blab .dots i{width:2px;height:2px;border-radius:50%;background:rgba(38,24,8,.65);display:block;}
+/* notation key, sitting above the score so the marks are explained in place */
+.notekey{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:flex-end;
+  padding:2px 0 11px;margin-bottom:11px;border-bottom:1px solid var(--line);}
+.notekey .kcap{color:var(--muted);font-size:10px;text-transform:uppercase;
+  letter-spacing:.7px;align-self:center;margin-right:2px;}
+.ki{display:inline-flex;flex-direction:column;align-items:center;gap:2px;}
+.kl{color:var(--muted);font-size:10px;letter-spacing:.2px;white-space:nowrap;}
+/* --- beat-grid rendering, used for scores; a transcription is one note per beat --- */
+/* A beat is the unit: it holds no notes (a rest), one, or several. A constant
+   minimum width keeps the grid legible so a rest reads as elapsed time. */
+.beat{display:inline-flex;flex-direction:column;align-items:center;min-width:26px;}
+.beat .inner{display:inline-flex;align-items:flex-end;justify-content:center;}
+/* Kepatihan beams: notes subdividing a beat are underlined, one line for
+   half-beats and two for quarters. Inset so three beamed beats in a row read as
+   three beats rather than one long group. This is why the score file's '-'
+   must never reach the screen. */
+.beat .beam{height:5px;align-self:stretch;margin:1px 2.5px 0;}
+.beat.sub2 .beam{border-top:1px solid var(--bronze);}
+.beat.sub4 .beam{border-top:1px solid var(--bronze);box-shadow:0 3px 0 -2px var(--bronze);}
+/* A rest keeps the beat's width. The bar is still ringing; there is simply no
+   new strike, so a mark is more use than a blank when following along — but it
+   has to be legible, which at 3px and 35% opacity it was not. */
+.beat.rest .inner{min-height:25px;}
+.beat.rest .inner::after{content:'';width:4px;height:4px;border-radius:50%;
+  background:var(--parch);opacity:.5;align-self:center;}
 .empty{color:var(--muted);text-align:center;padding:24px;font-size:14px;}
 .foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);padding-top:14px;margin-top:6px;}
 .foot b{color:var(--parch);}
@@ -197,7 +226,15 @@ table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radi
       <div class="row" style="margin-top:14px;">
         <button class="btn" id="useTuning">Use this tuning →</button>
         <button class="btn ghost" id="renumber">Renumber 1…N</button>
-        <button class="btn ghost" id="downloadProfile">Download instrument profile</button>
+        <button class="btn ghost" id="downloadProfile">Download instrument (tuning + audio)</button>
+        <button class="btn ghost" id="downloadWavs">Export WAVs separately</button>
+      </div>
+      <div class="hint" style="text-transform:none;letter-spacing:0;margin-top:8px;">
+        <b style="color:var(--parch)">One file holds everything.</b> The instrument
+        file carries your tuning and the trimmed audio together, so loading it back
+        restores the whole thing — including what Play along needs to sound a written
+        score. Exporting WAVs is a separate errand: the same clips as loose files, for
+        editing elsewhere. You do not need them to reload the instrument.
       </div>
     </div>
   </section>
@@ -211,6 +248,15 @@ table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radi
           <input type="file" id="perfFile" accept="audio/*,.wav,.mp3,.m4a,.m4b,.mp4,.aac,.flac,.aif,.aiff" hidden>
         </label>
         <button class="btn ghost" id="analyzePerf" disabled>Transcribe</button>
+        <button class="btn ghost" id="exportScore" disabled>Save as score</button>
+        <label class="drop">🎼 <span id="scoreName">upload a score for your instrument…</span>
+          <input type="file" id="scoreFile" accept=".score,.txt,.gamelan,text/plain" hidden>
+        </label>
+        <button class="btn ghost" id="loadScore" disabled>Load score</button>
+        <button class="btn ghost" id="loadSample" disabled>Load sample score</button>
+        <a class="hint" href="score-format.html" target="_blank" rel="noopener"
+           style="text-transform:none;letter-spacing:0;color:var(--bronze);align-self:center;"
+           >how to write a score &#8599;</a>
       </div>
       <div class="controls" style="margin-top:12px;">
         <button class="play" id="rwd" disabled title="back one gatra (four notes)">◀◀</button>
@@ -225,6 +271,7 @@ table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radi
       <div class="caption" id="barsCap">the voices, low → high — lit as struck</div>
     </div>
     <div class="panel">
+      <div class="notekey" id="notekey"></div>
       <div class="score" id="scoreScroll"><div id="score"><div class="empty">Load a performance and transcribe it to follow along.</div></div></div>
     </div>
   </section>
@@ -232,6 +279,9 @@ table.cal select.lbl{background:#160f0a;border:1px solid var(--line);border-radi
   <div class="foot">
     <b>How it works:</b> every gamelan is tuned to itself, so this tool measures your instrument's fundamentals from the samples you give it — no scale assumed. You supply the numbering from your own layout (highest note down); octaves come from pitch and show as a dot above (high), no dot (middle), or a dot below (low), so a repeated number stays unambiguous. Strikes in a performance are then snapped to your measured voices. A number in <span class="warn">this colour</span> is a strike that matched none of your voices well (an out-of-vocabulary sound — later this will help mark section breaks).<br>
     Audio in: WAV, MP3, M4A/AAC/MP4, FLAC (and AIFF where your browser supports it).<br>
+    You can also write a score as plain text and have it played through your own samples —
+    see <a href="score-format.html" style="color:var(--bronze)">how to write a score</a>,
+    which includes a live editor and a sample you can download and play.<br>
     Free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" style="color:var(--bronze)">GNU AGPL v3</a> · <a href="https://github.com/ljferdinand/gamelan-practice" style="color:var(--bronze)">source code</a>
   </div>
 </div>
@@ -329,6 +379,539 @@ function transcribe(x,sr,refFreqs,opts={}){
   for(let i=0;i<onsets.length;i++){const t1=i+1<onsets.length?onsets[i+1]:onsets[i]+1.0;
     const f0=estimateF0(x,sr,onsets[i],t1,{fLo,fHi});notes.push({t:onsets[i],f0,snap:snap(f0,refFreqs)});}
   return notes;
+}
+
+/* ===================== sample preparation (tone prep) =====================
+   Additive only: the pitch measurement above is untouched, because that path
+   produced the verified 14-voice / <1 cent gendér result. Trimming happens
+   AFTER measuring and affects only what is previewed and exported. */
+
+// a struck bar rings at inharmonic flexural ratios, not harmonics
+const FLEX_RATIOS=[2.756,5.404,8.933], HARM_RATIOS=[2,3,4,5];
+const ANALYSIS_SKIP_MS=20, ANALYSIS_SEC=0.5;
+function analysisWindow(x,sr){
+  const a=Math.min(x.length,Math.round(ANALYSIS_SKIP_MS*sr/1000));
+  const n=Math.min(x.length-a,Math.round(ANALYSIS_SEC*sr));
+  return n>0?x.subarray(a,a+n):x;
+}
+// exact magnitude at one frequency, no bin-alignment error
+function goertzel(x,sr,freq){
+  const N=x.length; if(N<8)return 0;
+  const w=hann(N),coeff=2*Math.cos(2*Math.PI*freq/sr);
+  let s1=0,s2=0;
+  for(let i=0;i<N;i++){const v=x[i]*w[i]+coeff*s1-s2;s2=s1;s1=v;}
+  return Math.sqrt(Math.max(0,s1*s1+s2*s2-coeff*s1*s2))*2/N;
+}
+// reuses the existing rfftMag / hann rather than carrying its own transform
+function peakList(seg,sr,fLo,fHi){
+  let N=nextPow2(seg.length)*4; if(N<4096)N=4096;
+  const w=hann(seg.length),sw=new Float64Array(seg.length);
+  for(let i=0;i<seg.length;i++)sw[i]=seg[i]*w[i];
+  const mag=rfftMag(sw,N),binHz=sr/N;
+  const lo=Math.max(1,Math.ceil(fLo/binHz)),hi=Math.min(mag.length-2,Math.floor(fHi/binHz));
+  const peaks=[];
+  for(let i=lo;i<=hi;i++){
+    if(mag[i]>mag[i-1]&&mag[i]>=mag[i+1]){
+      const al=Math.log(mag[i-1]+1e-12),a0=Math.log(mag[i]+1e-12),ar=Math.log(mag[i+1]+1e-12);
+      const den=al-2*a0+ar,d=den!==0?0.5*(al-ar)/den:0;
+      peaks.push({f:(i+d)*binHz,mag:mag[i]});
+    }
+  }
+  peaks.sort((a,b)=>b.mag-a.mag);
+  return peaks.slice(0,40);
+}
+// Is this clip ONE voice? Scores the strongest peak that cannot be explained as
+// a partial of f0. Deliberately needs no known-voice list: a clip can hold a bar
+// that was never measured in its own right, and checking only against measured
+// voices is blind to exactly that case.
+function independentContent(x,sr,f0,opts){
+  opts=opts||{}; const fLo=opts.fLo??60,fHi=opts.fHi??5000,tol=opts.tolCents??70;
+  const seg=analysisWindow(x,sr),peaks=peakList(seg,sr,fLo,fHi),own=goertzel(seg,sr,f0);
+  if(!peaks.length||!(own>0))return{db:-Infinity,hz:null};
+  const exp=[f0];
+  for(const r of FLEX_RATIOS.concat(HARM_RATIOS)){exp.push(f0*r);exp.push(f0/r);}
+  let worst={db:-Infinity,hz:null};
+  for(const pk of peaks){
+    if(exp.some(e=>Math.abs(1200*Math.log2(pk.f/e))<tol))continue;
+    const db=20*Math.log10(goertzel(seg,sr,pk.f)/own);
+    if(db>worst.db)worst={db:Math.round(db*10)/10,hz:Math.round(pk.f*10)/10};
+  }
+  return worst;
+}
+function envelope(x,sr,winMs){
+  const w=Math.max(16,Math.round(sr*(winMs||8)/1000)),n=Math.floor(x.length/w);
+  const e=new Float64Array(n);
+  for(let i=0;i<n;i++){let t=0;for(let k=0;k<w;k++){const v=x[i*w+k];t+=v*v;}e[i]=Math.sqrt(t/w);}
+  return{e:e,hop:w};
+}
+// Trim to just before the attack, keep the ring, and stop at whichever comes
+// first: an intruding strike, decay past tailDb, or maxDur.
+function prepareTone(x,sr,opts){
+  opts=opts||{};
+  const leadMs=opts.leadMs??8,fadeInMs=opts.fadeInMs??1.5,fadeOutMs=opts.fadeOutMs??120;
+  const tailDb=opts.tailDb??-45,maxDur=opts.maxDur??4.0,guardMs=opts.guardMs??30,intrudeDb=opts.intrudeDb??6;
+  const warnings=[],en=envelope(x,sr),e=en.e,hop=en.hop;
+  if(!e.length)return{samples:new Float32Array(0),warnings:['clip too short']};
+  let peakIdx=0,peak=0;
+  for(let i=0;i<e.length;i++)if(e[i]>peak){peak=e[i];peakIdx=i;}
+  const at=peak*Math.pow(10,-12/20);
+  let aF=0; for(let i=0;i<=peakIdx;i++)if(e[i]>=at){aF=i;break;}
+  while(aF>0&&e[aF-1]>peak*Math.pow(10,-40/20))aF--;
+  let intr=-1;
+  for(let i=peakIdx+Math.round(0.15*sr/hop);i<e.length-1;i++){
+    const prev=Math.max(e[i-1],e[i-2]||0)+1e-12;
+    if(20*Math.log10(e[i]/prev)>intrudeDb&&e[i]>peak*Math.pow(10,-30/20)){intr=i;break;}
+  }
+  const tt=peak*Math.pow(10,tailDb/20);
+  let tailF=e.length;
+  for(let i=peakIdx;i<e.length;i++)if(e[i]<tt){tailF=i;break;}
+  let endF=Math.min(tailF,e.length);
+  if(intr>0){
+    const g=intr-Math.round(guardMs*sr/1000/hop);
+    if(g>aF+2){ if(g<endF)warnings.push('truncated at '+(g*hop/sr).toFixed(2)+'s — another strike intrudes');
+      endF=Math.min(endF,g); }
+  }
+  let start=Math.max(0,aF*hop-Math.round(leadMs*sr/1000)),end=Math.min(x.length,endF*hop);
+  const maxLen=Math.round(maxDur*sr);
+  if(end-start>maxLen){end=start+maxLen;warnings.push('capped at '+maxDur+'s');}
+  if(end-start<Math.round(0.05*sr))
+    return{samples:new Float32Array(0),warnings:warnings.concat(['usable region under 50 ms'])};
+  const out=new Float32Array(end-start); out.set(x.subarray(start,end));
+  const fi=Math.min(out.length>>1,Math.round(fadeInMs*sr/1000));   // declick, keep the attack
+  for(let i=0;i<fi;i++)out[i]*=0.5-0.5*Math.cos(Math.PI*i/fi);
+  const fo=Math.min(out.length-fi,Math.round(fadeOutMs*sr/1000));  // don't click on the cut ring
+  for(let i=0;i<fo;i++){const k=out.length-fo+i;out[k]*=0.5+0.5*Math.cos(Math.PI*i/fo);}
+  let pk=0,sm=0; const rw=Math.min(out.length,Math.round(0.30*sr));
+  for(let i=0;i<out.length;i++){const a=Math.abs(out[i]);if(a>pk)pk=a;}
+  for(let i=0;i<rw;i++)sm+=out[i]*out[i];
+  return{samples:out,warnings:warnings,duration:out.length/sr,peak:pk,rms:Math.sqrt(sm/rw)};
+}
+// Raw recordings routinely span 10+ dB that is recording artifact, not intent.
+function levelMatchVoices(vs,opts){
+  opts=opts||{}; const target=opts.targetRms??0.12,ceil=opts.ceiling??0.89;
+  vs.forEach(function(v){
+    if(!v.seg||!v.seg.length||!(v.prepRms>0)){v.gainDb=0;return;}
+    let g=target/v.prepRms; if(v.prepPeak*g>ceil)g=ceil/v.prepPeak;
+    const out=new Float32Array(v.seg.length);
+    for(let i=0;i<out.length;i++)out[i]=v.seg[i]*g;
+    v.seg=out; v.prepPeak*=g; v.prepRms*=g; v.gainDb=Math.round(20*Math.log10(g)*10)/10;
+  });
+  return vs;
+}
+// Run the additive prep over a measured voice set: trim, check single-voice,
+// then match levels across the set.
+function prepareVoiceSamples(vs){
+  vs.forEach(function(v){
+    if(!v.seg||!v.seg.length||!v.f0)return;
+    const pr=prepareTone(v.seg,v.sr);
+    if(pr.samples.length){
+      v.seg=pr.samples; v.prepPeak=pr.peak; v.prepRms=pr.rms;
+      v.prepDur=pr.duration; v.prepWarn=pr.warnings.slice();
+    }
+    const ind=independentContent(v.seg,v.sr,v.f0);
+    v.polyDb=ind.db; v.polyHz=ind.hz; v.poly=ind.db>=-6;
+  });
+  return levelMatchVoices(vs);
+}
+function encodeWav(samples,sr){
+  const buf=new ArrayBuffer(44+samples.length*2),v=new DataView(buf);
+  const str=function(o,t){for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i));};
+  str(0,'RIFF');v.setUint32(4,36+samples.length*2,true);str(8,'WAVE');
+  str(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+  str(36,'data');v.setUint32(40,samples.length*2,true);
+  let o=44;
+  for(let i=0;i<samples.length;i++,o+=2){
+    const t=Math.max(-1,Math.min(1,samples[i]));
+    v.setInt16(o,t<0?t*0x8000:t*0x7fff,true);
+  }
+  return new Uint8Array(buf);
+}
+function b64(bytes){
+  let t='';const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk)t+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
+  return btoa(t);
+}
+function saveBlob(name,bytes,mime){
+  const url=URL.createObjectURL(new Blob([bytes],{type:mime}));
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+}
+
+/* ===================== score format + composition =====================
+   Mirrors engine/score_format.mjs and engine/composition.mjs on the composition
+   branch; kept inlined under the standing decision that this file stays
+   self-contained so it works from file:// and inside Tauri without a build step.
+   Any change here goes into those modules too.
+
+   THE CONFLICT THIS RESOLVES: buildScore() used to open a new gatra every four
+   NOTES. That is right for a transcription (one note per onset, no rests) but
+   wrong for a score, where a beat may be empty or hold two notes. On the
+   Arangarang score — 122 notes over 125 beats, 15 rests, 12 subdivided beats —
+   the two groupings diverge at the FIRST gatra and never re-align, 31 by note
+   against 32 by beat. The fix is ONE renderer: a transcription is given
+   beat = note index, so `beat % 4` reproduces the old `i % 4` exactly. */
+
+const RE_HEADER=/^([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.*)$/;
+const RE_SECTION=/^\[\s*([^\]]+?)\s*\]\s*(.*)$/;
+const RE_NOTE=/^([_^]*)([0-9A-Za-z]+)$/;
+function scoreErr(m,line){const e=new Error(line!=null?('line '+line+': '+m):m);e.name='ScoreError';return e;}
+function parseToken(raw,ln){
+  if(raw==='.')return{kind:'rest'};
+  if(raw==='*')return{kind:'damp'};
+  const parts=raw.split('-'),notes=[];
+  for(const pt of parts){
+    if(pt==='')throw scoreErr('empty subdivision slot in "'+raw+'"',ln);
+    if(pt==='.'||pt==='*'){notes.push({kind:pt==='.'?'rest':'damp'});continue;}
+    const m=RE_NOTE.exec(pt);
+    if(!m)throw scoreErr('cannot read note "'+pt+'" in token "'+raw+'"',ln);
+    let reg=0; for(const ch of m[1])reg+=ch==='^'?1:-1;
+    notes.push({kind:'note',degree:m[2],reg:reg});
+  }
+  return{kind:'beat',notes:notes};
+}
+function parseScore(text){
+  const header={},sections=[],warnings=[]; let cur=null,sawSection=false;
+  const lines=text.split(/\r?\n/);
+  for(let i=0;i<lines.length;i++){
+    const ln=i+1; let line=lines[i];
+    const h=line.indexOf('#'); if(h>=0)line=line.slice(0,h);
+    line=line.trim(); if(!line)continue;
+    const ms=RE_SECTION.exec(line);
+    if(ms){
+      sawSection=true;
+      const name=ms[1].trim(),rest=ms[2].trim();
+      let times=1,from=null,octShift=0;
+      if(rest){
+        const eq=/^=\s*([^\s]+)\s*(.*)$/.exec(rest); let tail=rest;
+        if(eq){from=eq[1];tail=eq[2].trim();}
+        for(const tk of tail.split(/\s+/).filter(Boolean)){
+          const mx=/^x(\d+)$/i.exec(tk),mo=/^oct([+-]\d+)$/i.exec(tk);
+          if(mx)times=parseInt(mx[1],10);
+          else if(mo)octShift=parseInt(mo[1],10);
+          else throw scoreErr('unknown section modifier "'+tk+'"',ln);
+        }
+      }
+      if(times<1)throw scoreErr('repeat count must be at least 1',ln);
+      cur={name:name,times:times,from:from,octShift:octShift,beats:[],gatra:[],line:ln};
+      sections.push(cur); continue;
+    }
+    const mh=RE_HEADER.exec(line);
+    if(mh&&!sawSection){header[mh[1].toLowerCase()]=mh[2].trim();continue;}
+    if(!cur){cur={name:'',times:1,from:null,octShift:0,beats:[],gatra:[],line:ln};sections.push(cur);}
+    if(cur.from)throw scoreErr('section "'+cur.name+'" is a copy of "'+cur.from+'" and cannot also have a body',ln);
+    let run=0;
+    for(const raw of line.split(/\s+/).filter(Boolean)){
+      if(raw==='|'){cur.gatra.push(run);run=0;continue;}
+      cur.beats.push(parseToken(raw,ln)); run++;
+    }
+    if(run)cur.gatra.push(run);
+  }
+  let beatSec=null;
+  if(header.beat)beatSec=parseFloat(header.beat);
+  else if(header.bpm)beatSec=60/parseFloat(header.bpm);
+  if(!beatSec||!(beatSec>0))throw scoreErr('the score needs a bpm or beat line in its header');
+  // A trailing partial gatra is normal, so only interior groups are checked;
+  // otherwise nearly every real score warns and the warning gets ignored.
+  for(const sec of sections){
+    const interior=sec.gatra.slice(0,-1);
+    const bad=interior.map((g,i)=>[i,g]).filter(x=>x[1]!==4);
+    if(interior.length&&bad.length)
+      warnings.push('section "'+(sec.name||'(unnamed)')+'" (line '+sec.line+'): gatra group(s) not 4 beats at position(s) '+
+        bad.map(x=>(x[0]+1)+'(='+x[1]+')').join(', '));
+  }
+  const byName=new Map(sections.filter(x=>x.name).map(x=>[x.name,x]));
+  for(const sec of sections){
+    if(!sec.from)continue;
+    const src=byName.get(sec.from);
+    if(!src)throw scoreErr('section "'+sec.name+'" refers to unknown section "'+sec.from+'"',sec.line);
+    if(src.from)throw scoreErr('section "'+sec.name+'" refers to "'+sec.from+'", which is itself a reference',sec.line);
+    sec.beats=src.beats; sec.gatra=src.gatra;
+  }
+  return{header:header,sections:sections,beatSec:beatSec,style:(header.style||'').toLowerCase(),warnings:warnings};
+}
+function scoreToEvents(score){
+  const events=[]; let beat=0;
+  for(const sec of score.sections){
+    for(let rep=0;rep<sec.times;rep++){
+      for(const tk of sec.beats){
+        if(tk.kind==='rest'){beat++;continue;}
+        if(tk.kind==='damp'){events.push({t:beat*score.beatSec,beat:beat,kind:'damp'});beat++;continue;}
+        const n=tk.notes.length;
+        tk.notes.forEach(function(nt,k){
+          const sub=beat+k/n;
+          if(nt.kind==='note')
+            events.push({t:sub*score.beatSec,beat:sub,kind:'note',
+              degree:nt.degree,reg:nt.reg+sec.octShift,section:sec.name,rep:rep});
+          else if(nt.kind==='damp')
+            events.push({t:sub*score.beatSec,beat:sub,kind:'damp',section:sec.name,rep:rep});
+        });
+        beat++;
+      }
+    }
+  }
+  return{events:events,totalBeats:beat,duration:beat*score.beatSec};
+}
+// A transcription is "one note per beat, no rests", so beat = note index makes
+// `beat % 4` reproduce the previous `i % 4` grouping byte for byte.
+function eventsFromTranscription(ns,voices){
+  return ns.map(function(n,i){
+    const known=n.snap&&n.snap.flag!=='?';
+    const v=known?voices[n.snap.index]:null;
+    return{beat:i,t:n.t,kind:'note',degree:v?String(v.label):'\u00b7',
+      reg:v?(v.reg||0):0,voiceIndex:known?n.snap.index:null,unplayable:!known};
+  });
+}
+function bindEvents(events,voices){
+  const table=new Map();
+  voices.forEach((v,i)=>table.set(v.label+'@'+(v.reg|0),i));
+  const missing=new Map();
+  const bound=events.map(function(e){
+    if(e.kind!=='note')return Object.assign({},e,{voiceIndex:null});
+    const key=e.degree+'@'+(e.reg|0),vi=table.get(key);
+    if(vi===undefined){
+      missing.set(key,(missing.get(key)||0)+1);
+      return Object.assign({},e,{voiceIndex:null,unplayable:true});
+    }
+    return Object.assign({},e,{voiceIndex:vi});
+  });
+  return{events:bound,missing:[...missing.entries()].map(x=>({token:x[0],count:x[1]}))};
+}
+// One cell per BEAT, holding zero notes (a rest), one, or several.
+function layoutBeats(events,totalBeats,perGatra){
+  perGatra=perGatra||4;
+  const n=totalBeats!=null?totalBeats:
+    (events.length?Math.floor(Math.max.apply(null,events.map(e=>e.beat)))+1:0);
+  const cells=[];
+  for(let b=0;b<n;b++)cells.push({beat:b,gatra:Math.floor(b/perGatra),notes:[]});
+  events.forEach(function(e,i){
+    const b=Math.floor(e.beat+1e-9);
+    if(b>=0&&b<cells.length)cells[b].notes.push({event:e,eventIndex:i});
+  });
+  cells.forEach(c=>c.notes.sort((p,q)=>p.event.beat-q.event.beat));
+  return cells;
+}
+// Steps by BEAT, replacing the note-index arithmetic that drifted on scores.
+function gatraStepTarget(events,curIdx,dir,perGatra){
+  perGatra=perGatra||4;
+  if(!events.length)return null;
+  const here=curIdx>=0?events[curIdx].beat:-1;
+  const g=Math.floor(Math.max(0,here)/perGatra);
+  const target=(here<0&&dir<0)?0:(g+dir)*perGatra;
+  if(target<0)return 0;
+  for(let i=0;i<events.length;i++)if(events[i].beat>=target-1e-9)return i;
+  return events.length-1;
+}
+/* Two transports exposing the same small surface, so tick(), the seek bar, the
+   speed slider and the gatra buttons work against either without change. */
+function AudioFileTransport(audio){
+  this.audio=audio; this.onended=null; const self=this;
+  audio.addEventListener('ended',function(){if(self.onended)self.onended();});
+}
+Object.defineProperties(AudioFileTransport.prototype,{
+  ready:{get(){return!!this.audio.src;}},
+  duration:{get(){return this.audio.duration||0;}},
+  paused:{get(){return this.audio.paused;}},
+  currentTime:{get(){return this.audio.currentTime;},set(t){this.audio.currentTime=t;}},
+  playbackRate:{get(){return this.audio.playbackRate;},set(r){this.audio.playbackRate=r;}}
+});
+AudioFileTransport.prototype.play=function(){this.audio.play();};
+AudioFileTransport.prototype.pause=function(){this.audio.pause();};
+AudioFileTransport.prototype.dispose=function(){this.audio.pause();};
+
+// Schedules sampled voices against an AudioContext. Speed is a TEMPO change
+// that reschedules, not a resampling: slowing a score must not shift its pitch.
+function CompositionTransport(ctx,cfg){
+  this.ctx=ctx;
+  this.events=cfg.events.filter(e=>e.kind==='note'&&e.voiceIndex!=null);
+  this.buffers=cfg.buffers;
+  this._duration=(cfg.totalBeats||0)*cfg.beatSec;
+  this._rate=1;this._pos=0;this._anchor=0;this._paused=true;
+  this._next=0;this._live=[];this._timer=0;this.onended=null;
+  this.LOOKAHEAD=0.35;this.TICK_MS=90;
+  this._out=ctx.createGain();this._out.gain.value=cfg.gain==null?1:cfg.gain;
+  this._out.connect(ctx.destination);
+}
+Object.defineProperties(CompositionTransport.prototype,{
+  ready:{get(){return this.events.length>0;}},
+  duration:{get(){return this._duration;}},
+  paused:{get(){return this._paused;}},
+  currentTime:{
+    get(){return this._paused?this._pos:this._pos+(this.ctx.currentTime-this._anchor)*this._rate;},
+    set(t){this.seek(t);}
+  },
+  playbackRate:{
+    get(){return this._rate;},
+    set(r){
+      const rate=Math.max(0.1,Math.min(4,+r||1));
+      if(rate===this._rate)return;
+      if(this._paused){this._rate=rate;return;}
+      const at=this.currentTime;
+      this._stopLive();this._rate=rate;this._pos=at;
+      this._anchor=this.ctx.currentTime;this._seekIndex(at);
+    }
+  }
+});
+CompositionTransport.prototype._seekIndex=function(at){
+  this._next=0;
+  while(this._next<this.events.length&&this.events[this._next].t<at-1e-9)this._next++;
+};
+CompositionTransport.prototype._stopLive=function(){
+  for(const sc of this._live){try{sc.stop();}catch(e){}}
+  this._live=[];
+};
+CompositionTransport.prototype._pump=function(){
+  if(this._paused)return;
+  const now=this.currentTime,horizon=now+this.LOOKAHEAD,self=this;
+  while(this._next<this.events.length&&this.events[this._next].t<=horizon){
+    const e=this.events[this._next++],buf=this.buffers[e.voiceIndex];
+    if(!buf)continue;
+    const when=this._anchor+(e.t-this._pos)/this._rate;
+    const src=this.ctx.createBufferSource();
+    src.buffer=buf;src.connect(this._out);
+    src.start(Math.max(this.ctx.currentTime,when));
+    this._live.push(src);
+    src.onended=function(){const k=self._live.indexOf(src);if(k>=0)self._live.splice(k,1);};
+  }
+  if(now>=this._duration){
+    this.pause();this._pos=this._duration;
+    if(this.onended)this.onended();
+  }
+};
+CompositionTransport.prototype.play=function(){
+  if(!this._paused)return;
+  if(this.ctx.state==='suspended')this.ctx.resume();
+  if(this._pos>=this._duration)this._pos=0;
+  this._paused=false;this._anchor=this.ctx.currentTime;
+  this._seekIndex(this._pos);this._pump();
+  const self=this;this._timer=setInterval(function(){self._pump();},this.TICK_MS);
+};
+CompositionTransport.prototype.pause=function(){
+  if(this._paused)return;
+  this._pos=this.currentTime;this._paused=true;
+  clearInterval(this._timer);this._timer=0;this._stopLive();
+};
+CompositionTransport.prototype.seek=function(t){
+  const at=Math.max(0,Math.min(this._duration,+t||0));
+  if(this._paused){this._pos=at;this._seekIndex(at);return;}
+  this._stopLive();this._pos=at;this._anchor=this.ctx.currentTime;
+  this._seekIndex(at);this._pump();
+};
+CompositionTransport.prototype.dispose=function(){
+  this.pause();try{this._out.disconnect();}catch(e){}
+};
+
+/* ===================== beat inference (performance -> score) =====================
+   The onsets are MEASURED. The grid below is INFERRED, and the two must not be
+   confused: a wrong grid looks as authoritative as a right one. Every export
+   reports its fit so a bad grid is visible rather than silent.
+
+   Measured against the Arangarang performance by hand: base beat 0.5440 s
+   (110 bpm), 15 rests, 12 subdivided beats, quantisation residual 41 ms rms —
+   about 7.5% of a beat. This code should reproduce roughly that. */
+
+function inferBeatGrid(times){
+  if(!times||times.length<4)return null;
+  const iois=[];
+  for(let i=1;i<times.length;i++)iois.push(times[i]-times[i-1]);
+  const sorted=iois.slice().sort((a,b)=>a-b);
+  const med=sorted[sorted.length>>1];
+  if(!(med>0))return null;
+
+  // Score a candidate grid by error as a FRACTION of its own spacing, never in
+  // absolute time. Absolute error falls monotonically as the grid gets denser,
+  // so minimising it always picks a meaninglessly fine grid; normalising makes
+  // the comparison scale-invariant and the musical answer wins on its merits.
+  const score=function(tat){
+    let err=0,n=0;
+    for(const g of iois){
+      const q=Math.max(1,Math.round(g/tat));
+      if(q>24)continue;
+      err+=Math.abs(g-q*tat);n++;
+    }
+    return n?(err/n)/tat:Infinity;
+  };
+  const lo=med/5,hi=med*1.4,N=900;
+  let tatum=med,best=Infinity;
+  for(let k=0;k<N;k++){
+    const tat=lo+(hi-lo)*k/(N-1),sc=score(tat);
+    if(sc<best){best=sc;tatum=tat;}
+  }
+
+  // How many tatums does a typical note span? That is the beat.
+  const q0=iois.map(g=>Math.max(1,Math.round(g/tatum)));
+  const counts={};
+  q0.forEach(function(q){ if(q<=4)counts[q]=(counts[q]||0)+1; });
+  let perBeat=1,mx=-1;
+  for(const k of Object.keys(counts))if(counts[k]>mx){mx=counts[k];perBeat=+k;}
+  perBeat=Math.max(1,Math.min(4,perBeat));
+
+  // Second pass for tempo drift: the local spacing is the windowed median of
+  // what each gap actually implies, so a gradual speed-up does not smear the fit.
+  const implied=iois.map((g,i)=>g/Math.max(1,q0[i]));
+  const localTatum=function(i){
+    const a=Math.max(0,i-5),b=Math.min(implied.length,i+6),w=[];
+    for(let k=a;k<b;k++)if(q0[k]<=perBeat*2)w.push(implied[k]);
+    if(!w.length)return tatum;
+    w.sort((x,y)=>x-y);return w[w.length>>1];
+  };
+
+  const pos=[0];let err=0,cnt=0;
+  for(let i=0;i<iois.length;i++){
+    const tat=localTatum(i);
+    let q=Math.max(1,Math.round(iois[i]/tat));
+    // Rests in this music fall on beats, so anything longer than one beat snaps
+    // to a whole number of beats rather than landing off the grid.
+    if(perBeat>1&&q>perBeat&&q%perBeat!==0){
+      const up=q+(perBeat-(q%perBeat)),dn=q-(q%perBeat);
+      q=(Math.abs(iois[i]-up*tat)<Math.abs(iois[i]-dn*tat))?up:Math.max(perBeat,dn);
+    }
+    err+=Math.abs(iois[i]-q*tat);cnt++;
+    pos.push(pos[i]+q);
+  }
+  const beatSec=tatum*perBeat;
+  const beats=pos.map(t=>t/perBeat);
+  return {beatSec:beatSec,tatumSec:tatum,perBeat:perBeat,beats:beats,
+    totalBeats:Math.floor(beats[beats.length-1])+1,
+    residualMs:cnt?err/cnt*1000:0,
+    residualPct:cnt?(err/cnt)/beatSec*100:0};
+}
+
+// Write a score file from transcribed notes placed on an inferred grid.
+function eventsToScoreText(evs,grid,meta){
+  const mark=r=>r===0?'':(r>0?'^'.repeat(r):'_'.repeat(-r));
+  const byBeat=new Map(); let maxBeat=-1;
+  evs.forEach(function(e,i){
+    if(e.voiceIndex==null&&e.unplayable)return;      // no bar: cannot be written
+    const b=Math.floor(grid.beats[i]+1e-9);
+    if(!byBeat.has(b))byBeat.set(b,[]);
+    byBeat.get(b).push({tok:mark(e.reg)+e.degree,at:grid.beats[i]});
+    if(b>maxBeat)maxBeat=b;
+  });
+  const toks=[];
+  for(let b=0;b<=maxBeat;b++){
+    const g=byBeat.get(b);
+    if(!g||!g.length){toks.push('.');continue;}
+    g.sort((x,y)=>x.at-y.at);
+    toks.push(g.map(x=>x.tok).join('-'));
+  }
+  const out=[];
+  out.push('# Written from a transcribed performance by Gamelan Practice.');
+  out.push('# Onset times are measured; the beat grid below is INFERRED —');
+  out.push('# quantisation residual '+grid.residualMs.toFixed(0)+' ms ('+
+           grid.residualPct.toFixed(1)+'% of a beat).');
+  out.push('# Play it back against the recording to check it by ear.');
+  if(meta&&meta.name)out.push('name: '+meta.name);
+  if(meta&&meta.instrument)out.push('instrument: '+meta.instrument);
+  out.push('bpm: '+(60/grid.beatSec).toFixed(2));
+  out.push('style: '+(meta&&meta.style?meta.style:'jv'));
+  out.push('');
+  for(let i=0;i<toks.length;i+=16){
+    const row=toks.slice(i,i+16),gats=[];
+    for(let k=0;k<row.length;k+=4)gats.push(row.slice(k,k+4).join(' '));
+    out.push('  '+gats.join(' | '));
+  }
+  return out.join('\n')+'\n';
 }
 
 /* ===================== audio decode (any supported format) ===================== */
@@ -431,8 +1014,10 @@ function noteHtml(label, reg){
 function voicesFromSweep(samples, sr, sensitivity){
   const bars=calibrateFromSweep(samples, sr, {sensitivity});   // temporal order [{t,f0,quality}]
   let voices=bars.map((b,i)=>{
-    const start=b.t, end=(i+1<bars.length?bars[i+1].t:b.t+1.0);
-    const segdur=Math.min(1.2, Math.max(0.15, end-start));
+    const start=b.t, end=(i+1<bars.length?bars[i+1].t:samples.length/sr);
+    // Take the whole gap: the ring IS the sound for playback. prepareTone()
+    // trims the tail and cuts before any intruding strike.
+    const segdur=Math.min(4.0, Math.max(0.15, end-start));
     const a=Math.floor(start*sr), bb=Math.min(Math.floor((start+segdur)*sr), samples.length);
     return {f0:b.f0, quality:b.quality, seg:samples.slice(a, Math.max(a+1,bb)), sr, previewed:false};
   });
@@ -441,6 +1026,7 @@ function voicesFromSweep(samples, sr, sensitivity){
   voices=mg.voices;
   assignRegisters(voices);
   applyDefaultLabels(voices);                       // 1..5 counted down from the top; user edits
+  prepareVoiceSamples(voices);   // trim / single-voice check / level match — additive
   return {voices, merged:mg.merged};
 }
 
@@ -493,6 +1079,7 @@ $('#voiceCount').addEventListener('change',()=>{ if($('input[name=mode]:checked'
 }));
 $('#dotStyle').addEventListener('change',()=>{
   if(calVoices&&calVoices.length) renderResults();
+  buildLegend();
   if(instrument) buildBars();
   if(notes&&notes.length){ buildScore(); lastIdx=-1; lastTop=-1; }
 });
@@ -532,11 +1119,12 @@ $('#analyzeVoices').addEventListener('click',async()=>{
       const label=r.querySelector('.vlabel').value||'?';
       const {samples,sr}=await decodeFile(f);
       const {f0,quality}=measureTone(samples,sr);
-      const seg=samples.subarray(0, Math.min(samples.length, Math.floor(2.0*sr))).slice(0);
+      const seg=samples.subarray(0, Math.min(samples.length, Math.floor(4.0*sr))).slice(0);
       voices.push({label,f0,quality,seg,sr,previewed:false});
     }
     voices.sort((a,b)=>(a.f0||0)-(b.f0||0));
     assignRegisters(voices);
+    prepareVoiceSamples(voices);   // trim / single-voice check / level match
     calVoices=voices; calMode='voice';
     expectedVoices=voices.length;
     renderResults();
@@ -557,7 +1145,16 @@ function renderResults(){
     const q=v.quality||0;
     const bad=q>0&&q<qmed*0.25;
     const qw=Math.max(6,Math.min(90,Math.round(90*Math.min(1,q/(qmed*1.5||1)))));
-    const qcell = v.f0 ? ('<span class="q" style="width:'+qw+'px"></span> '+(bad?'<span class="warn">⚠ unclear</span>':'<span class="ok">ok</span>')) : '<span class="warn">no tone</span>';
+    // Two distinct failures: an unclear SAMPLE (low spectral prominence) and a
+    // clip holding TWO bars, where the measured pitch may be the wrong one.
+    let qcell;
+    if(!v.f0) qcell='<span class="warn">no tone</span>';
+    else if(v.poly) qcell='<span class="q" style="width:'+qw+'px"></span> '+
+      '<span class="warn" title="'+esc(v.polyHz+' Hz sits at '+(v.polyDb>0?'+':'')+v.polyDb+
+      ' dB against this reading and is not one of its partials, so the measured pitch may be the wrong bar. Re-record this voice if you can.')+
+      '">⚠ two voices</span>';
+    else qcell='<span class="q" style="width:'+qw+'px"></span> '+
+      (bad?'<span class="warn">⚠ unclear</span>':'<span class="ok">ok</span>');
     const canPrev = !!v.seg;
     const canDel = !v.seg || v.previewed;   // gate: you must hear a measured tone before removing it
     const opts=numberSet().slice();
@@ -611,8 +1208,11 @@ $('#useTuning').addEventListener('click',()=>{
   $('#instLabel').textContent=instrument.name;
   $('#instMeta').textContent='· '+voices.length+' voices, '+voices[0].f0.toFixed(0)+'–'+voices[voices.length-1].f0.toFixed(0)+' Hz';
   buildBars();
+  buildLegend();
+  sampleBuffers=null;      // re-derive from the voices just accepted
+  updateScoreBtn();
   $('#tabPlay').click();
-  msg('Tuning set for “'+instrument.name+'”. Load a performance to play along.','info');
+  msg('Tuning set for “'+instrument.name+'”. Load a performance to play along, or upload a score to hear it played.','info');
 });
 $('#renumber').addEventListener('click',()=>{
   if(!calVoices||!calVoices.length)return;
@@ -634,13 +1234,43 @@ $('#calSens').addEventListener('change',()=>{
 
 // ---- profile download / load ----
 $('#downloadProfile').addEventListener('click',()=>{
-  const src=instrument||(calVoices?{name:$('#instName').value,voices:calVoices.filter(v=>v.f0).map(v=>({label:v.label,f0:v.f0}))}:null);
-  if(!src){ msg('Nothing to save yet.','err'); return; }
-  const data={format:'gamelan-instrument',version:1,name:src.name,dotStyle:dotStyle(),
-    voices:src.voices.slice().sort((a,b)=>a.f0-b.f0).map(v=>({label:v.label,hz:+v.f0.toFixed(2),reg:v.reg||0}))};
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=(src.name||'instrument').replace(/[^\w.-]+/g,'_')+'.gamelan.json';a.click();
+  const src=instrument||(calVoices?{name:$('#instName').value,voices:calVoices.filter(v=>v.f0)}:null);
+  if(!src||!src.voices.length){ msg('Nothing to save yet.','err'); return; }
+  const name=$('#instName').value||src.name||'Instrument';
+  // Samples ride along when we have them. When we do not — a tuning-only profile
+  // was loaded, or a voice failed to prepare — the file is still written, just
+  // without audio, rather than dead-ending.
+  const byKey=new Map((calVoices||[]).filter(v=>v.seg&&v.seg.length)
+    .map(v=>[v.label+'@'+(v.reg|0),v]));
+  let withAudio=0, sr=null;
+  const voices=src.voices.slice().sort((a,b)=>a.f0-b.f0).map(function(v){
+    const o={label:v.label,hz:+v.f0.toFixed(2),reg:v.reg||0};
+    const prep=byKey.get(v.label+'@'+(v.reg|0));
+    if(prep){ o.duration=+(prep.prepDur||prep.seg.length/prep.sr).toFixed(3);
+      o.singleVoice=!prep.poly; o.gainDb=prep.gainDb||0;
+      o.wav=b64(encodeWav(prep.seg,prep.sr)); withAudio++; sr=prep.sr; }
+    else if(v.wav){ o.wav=v.wav; o.singleVoice=v.singleVoice; withAudio++; sr=bundleSampleRate; }
+    return o;
+  });
+  const data={format:'gamelan-instrument',version:1,name:name,dotStyle:dotStyle(),
+    carries:withAudio?'samples':'tuning',sampleRate:sr||44100,voices:voices};
+  const json=JSON.stringify(data);
+  saveBlob(name.replace(/[^\w.-]+/g,'_')+'.gamelan.json',
+    new TextEncoder().encode(json),'application/json');
+  msg(withAudio===voices.length
+    ? ('Saved '+voices.length+' voices with audio ('+(json.length/1048576).toFixed(2)+
+       ' MB). Reload it any time to play a written score.')
+    : ('Saved '+voices.length+' voices, '+withAudio+' with audio. Voices without a '+
+       'sample will not sound when playing a score.'),
+    withAudio===voices.length?'info':'err');
+});
+$('#downloadWavs').addEventListener('click',()=>{
+  const vs=(calVoices||[]).filter(v=>v.f0&&v.seg&&v.seg.length);
+  if(!vs.length){ msg('No prepared samples to save yet — measure a tuning first.','err'); return; }
+  vs.slice().sort((a,b)=>a.f0-b.f0).forEach((v,i)=>setTimeout(()=>
+    saveBlob('voice-'+v.label+'-'+Math.round(v.f0)+'Hz.wav',encodeWav(v.seg,v.sr),'audio/wav'),
+    i*220));
+  msg('Saving '+vs.length+' WAV files.','info');
 });
 $('#loadProfileBtn').addEventListener('click',()=>$('#profileFile').click());
 $('#profileFile').addEventListener('change',async e=>{
@@ -649,8 +1279,12 @@ $('#profileFile').addEventListener('change',async e=>{
     const d=JSON.parse(await f.text());
     if(!d.voices||!d.voices.length) throw new Error('no voices in file');
     if(d.dotStyle==='sd'||d.dotStyle==='jv') $('#dotStyle').value=d.dotStyle;
-    const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0,reg:(v.reg!=null?+v.reg:null)})).sort((a,b)=>a.f0-b.f0);
+    const voices=d.voices.map(v=>({label:String(v.label),f0:+v.hz,quality:0,reg:(v.reg!=null?+v.reg:null),
+      wav:v.wav||null,singleVoice:v.singleVoice})).sort((a,b)=>a.f0-b.f0);
     if(voices.some(v=>v.reg==null)) assignRegisters(voices);
+    bundleSampleRate = d.sampleRate || 44100;
+    loadedWavs = voices.some(v=>v.wav) ? voices.map(v=>v.wav) : null;
+    sampleBuffers = null;   // decoded lazily when a score is played
     instrument={name:d.name||'Instrument',voices};
     calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0,reg:v.reg,previewed:false}));
     calMode='loaded'; expectedVoices=calVoices.length;
@@ -658,13 +1292,46 @@ $('#profileFile').addEventListener('change',async e=>{
     $('#tabPlay').disabled=false;$('#instLabel').textContent=instrument.name;
     $('#instMeta').textContent='· '+voices.length+' voices, '+voices[0].f0.toFixed(0)+'–'+voices[voices.length-1].f0.toFixed(0)+' Hz';
     buildBars();
-    msg('Loaded “'+instrument.name+'”. Go to Play along, or re-measure to update it.','info');
+    buildLegend();
+    msg('Loaded “'+instrument.name+'”'+(loadedWavs?' with sample audio, so it can sound a written score':'')+
+        '. Go to Play along, or re-measure to update it.','info');
+    updateScoreBtn();
   }catch(err){ msg('Could not read that profile ('+err.message+').','err'); }
 });
 
 /* ===================== play view ===================== */
 const audio=new Audio();
 let notes=[], times=[], noteEls=[], barEls=[], lastIdx=-1, lastTop=-1, raf=0;
+// Unified across both modes: a transcription and a score both become `events`,
+// laid out as beat `cells`. `T` is whichever transport is driving playback.
+let events=[], cells=[], T=null;
+let scoreDoc=null, scoreEvents=null, perfGrid=null, perfName='performance';
+let sampleBuffers=null, loadedWavs=null, bundleSampleRate=44100, playCtx=null;
+function audioCtx(){ if(!playCtx) playCtx=new (window.AudioContext||window.webkitAudioContext)(); return playCtx; }
+function updateScoreBtn(){
+  const haveScore=!!($('#scoreFile')&&$('#scoreFile').files[0]);
+  const haveSamples=!!(loadedWavs||(calVoices&&calVoices.some(v=>v.seg&&v.seg.length)));
+  const ready=!!(instrument&&haveSamples);
+  $('#loadScore').disabled=!(haveScore&&ready);
+  $('#loadSample').disabled=!ready;
+}
+// Kept in step with the copy in score-format.html. Only unmarked degrees 1-5, so
+// it plays on any five-tone instrument whatever its register layout.
+const SAMPLE_SCORE=[
+'# A practice pattern for testing playback. Made up for this purpose,',
+'# not a traditional piece.',
+'name: Practice pattern',
+'bpm: 100',
+'style: jv',
+'',
+'[A] x2',
+'1 2 3 5 | 3 2 1 .   | 5 3 2 1 | 2 3-3 2 .',
+'',
+'[B]',
+'3-2 1-2 3 5 | 5-3 2-1 2 . | 1 2 3-5 3 | 2 1 . .',
+'',
+'[A again] = A',
+''].join('\n');
 const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function buildBars(){
@@ -682,6 +1349,95 @@ function buildBars(){
 $('#perfFile').addEventListener('change',e=>{
   if(e.target.files[0]){ $('#perfName').textContent=e.target.files[0].name; $('#analyzePerf').disabled=false; }
 });
+// Writing the transcription out in the playback format closes the loop: load it
+// back, play it through the samples, and judge by ear whether the transcription
+// and the inferred grid are right. A mismatch is informative either way.
+$('#exportScore').addEventListener('click',()=>{
+  if(!perfGrid||!events.length||!instrument){ msg('Transcribe a performance first.','err'); return; }
+  const txt=eventsToScoreText(events,perfGrid,
+    {name:perfName,instrument:instrument.name,style:dotStyle()});
+  saveBlob(perfName.replace(/[^\w.-]+/g,'_')+'.score',
+    new TextEncoder().encode(txt),'text/plain');
+  const unwritable=events.filter(e=>e.unplayable).length;
+  msg('Saved a score at '+(60/perfGrid.beatSec).toFixed(1)+' bpm over '+
+      perfGrid.totalBeats+' beats'+(unwritable?(', omitting '+unwritable+
+      ' strike(s) that matched no voice'):'')+
+      '. Upload it below to hear it played through your samples.','info');
+});
+$('#scoreFile').addEventListener('change',e=>{
+  if(e.target.files[0]) $('#scoreName').textContent=e.target.files[0].name;
+  updateScoreBtn();
+});
+// Samples come from whichever source is to hand: a loaded profile that carries
+// audio, or voices just measured in this session.
+async function ensureBuffers(){
+  if(sampleBuffers) return sampleBuffers;
+  const ctx=audioCtx(), n=instrument.voices.length, out=new Array(n).fill(null);
+  if(loadedWavs){
+    for(let i=0;i<n;i++){
+      const enc=loadedWavs[i]; if(!enc)continue;
+      const bin=atob(enc), bytes=new Uint8Array(bin.length);
+      for(let k=0;k<bin.length;k++)bytes[k]=bin.charCodeAt(k);
+      out[i]=await ctx.decodeAudioData(bytes.buffer);
+    }
+  } else if(calVoices){
+    // match on label+register, so a relabelled or reordered table still binds
+    const key=v=>v.label+'@'+(v.reg|0);
+    const byKey=new Map(calVoices.filter(v=>v.seg&&v.seg.length).map(v=>[key(v),v]));
+    instrument.voices.forEach(function(v,i){
+      const src=byKey.get(key(v)); if(!src)return;
+      const buf=ctx.createBuffer(1,src.seg.length,src.sr);
+      if(buf.copyToChannel)buf.copyToChannel(src.seg,0); else buf.getChannelData(0).set(src.seg);
+      out[i]=buf;
+    });
+  }
+  sampleBuffers=out; return out;
+}
+async function loadScoreText(text,label){
+  clearMsg();
+  $('#loadScore').disabled=true; $('#loadSample').disabled=true;
+  try{
+    scoreDoc=parseScore(text);
+    if(scoreDoc.style==='jv'||scoreDoc.style==='sd'){ $('#dotStyle').value=scoreDoc.style; buildLegend(); }
+    const ev=scoreToEvents(scoreDoc);
+    const bd=bindEvents(ev.events,instrument.voices);
+    events=bd.events; cells=layoutBeats(events,ev.totalBeats);
+    times=events.map(e=>e.t); notes=[];      // no recording sits behind a score
+    const bufs=await ensureBuffers();
+    if(T&&T.dispose)T.dispose();
+    T=new CompositionTransport(audioCtx(),{events:events,totalBeats:ev.totalBeats,
+      beatSec:scoreDoc.beatSec,buffers:bufs});
+    T.onended=()=>{ $('#play').textContent='Play'; };
+    if(audio.src){ audio.pause(); }
+    buildScore();
+    $('#play').disabled=false;$('#rwd').disabled=false;$('#ffwd').disabled=false;
+    lastIdx=-1;lastTop=-1;$('#seekFill').style.width='0%';$('#play').textContent='Play';
+    refreshReadout();
+    const noteCount=events.filter(e=>e.kind==='note').length;
+    const silent=bufs.filter((b,i)=>!b&&events.some(e=>e.voiceIndex===i)).length;
+    let m=(scoreDoc.header.name?('“'+scoreDoc.header.name+'”: '):(label?(label+': '):''))+
+      noteCount+' notes over '+ev.totalBeats+' beats at '+
+      Math.round(60/scoreDoc.beatSec)+' bpm.';
+    const unplayable=bd.missing.reduce((acc,x)=>acc+x.count,0);
+    if(unplayable) m+=' '+unplayable+' note'+(unplayable>1?'s':'')+
+      ' ask for a bar this instrument does not have and will stay silent ('+
+      bd.missing.map(x=>x.token).join(', ')+').';
+    if(silent) m+=' '+silent+' voice'+(silent>1?'s have':' has')+' no sample, so those notes are silent.';
+    if(scoreDoc.warnings.length) m+=' '+scoreDoc.warnings.join(' ');
+    msg(m+' Press play.', (unplayable||silent)?'err':'info');
+    $('#scoreScroll').scrollTop=0;
+  }catch(err){ msg('Could not read that score: '+err.message,'err'); }
+  finally{ updateScoreBtn(); }
+}
+$('#loadScore').addEventListener('click',async()=>{
+  const f=$('#scoreFile').files[0]; if(!f||!instrument)return;
+  await loadScoreText(await f.text(), f.name.replace(/\.[^.]+$/,''));
+});
+$('#loadSample').addEventListener('click',async()=>{
+  if(!instrument)return;
+  $('#scoreName').textContent='Practice pattern (built in)';
+  await loadScoreText(SAMPLE_SCORE,'Practice pattern');
+});
 $('#analyzePerf').addEventListener('click',async()=>{
   const f=$('#perfFile').files[0]; if(!f||!instrument)return; clearMsg();
   $('#analyzePerf').disabled=true;$('#analyzePerf').textContent='Transcribing…';
@@ -689,41 +1445,104 @@ $('#analyzePerf').addEventListener('click',async()=>{
     const {samples,sr}=await decodeFile(f);
     const refs=instrument.voices.map(v=>v.f0);
     notes=transcribe(samples,sr,refs);
-    times=notes.map(n=>n.t);
+    // Same event shape a score produces, so one renderer serves both.
+    events=eventsFromTranscription(notes,instrument.voices);
+    cells=layoutBeats(events,events.length);
+    times=events.map(e=>e.t);
     if(audio.src) URL.revokeObjectURL(audio.src);
     audio.src=URL.createObjectURL(f);
+    if(T&&T.dispose)T.dispose();
+    T=new AudioFileTransport(audio);
+    T.onended=()=>{ $('#play').textContent='Play'; };
+    perfGrid=inferBeatGrid(times);
+    perfName=(f.name||'performance').replace(/\.[^.]+$/,'');
+    $('#exportScore').disabled=!perfGrid;
     buildScore();
     $('#play').disabled=false; $('#rwd').disabled=false; $('#ffwd').disabled=false;
     lastIdx=-1; lastTop=-1; $('#seekFill').style.width='0%';
-    msg('Transcribed '+notes.length+' strikes. Press play.','info');
+    let tm='Transcribed '+notes.length+' strikes.';
+    if(perfGrid) tm+=' Inferred beat '+(60/perfGrid.beatSec).toFixed(1)+' bpm, fit '+
+      perfGrid.residualMs.toFixed(0)+' ms ('+perfGrid.residualPct.toFixed(1)+
+      '% of a beat) — save it as a score to hear it played back through your samples.';
+    msg(tm+' Press play.','info');
   }catch(err){ msg(err.message,'err'); }
   finally{ $('#analyzePerf').disabled=false;$('#analyzePerf').textContent='Transcribe'; }
 });
+// ONE renderer for both modes. A cell is a BEAT, holding no notes (a rest), one,
+// or several (a subdivision, drawn with a kepatihan beam). For a transcription
+// beat === note index, so gatra grouping is identical to the previous behaviour.
+// Built with the very same noteHtml() the score uses, so the examples cannot
+// drift from what is actually drawn, and the register labels follow the
+// Javanese/Sundanese toggle instead of being written down as fixed text.
+function keyCell(ns){
+  const n=ns.length;
+  const cls='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
+  const inner=ns.map(x=>'<span class="note'+(x.cls?(' '+x.cls):'')+'">'+
+    noteHtml(x.d,x.reg||0)+'</span>').join('');
+  return '<span class="'+cls+'"><span class="inner">'+inner+
+         '</span><span class="beam"></span></span>';
+}
+function buildLegend(){
+  const host=$('#notekey'); if(!host)return;
+  const items=[];
+  // Only show the registers this instrument actually has, so the key never
+  // explains a mark the user cannot play.
+  const regs=instrument?[...new Set(instrument.voices.map(v=>v.reg|0))].sort((a,b)=>a-b):[0];
+  const word=r=>r===0?'middle octave':
+    (Math.abs(r)===1?('one octave '+(r>0?'up':'down')):
+     (Math.abs(r)+' octaves '+(r>0?'up':'down')));
+  regs.forEach(r=>items.push([keyCell([{d:'3',reg:r}]),word(r)]));
+  items.push([keyCell([{d:'3'},{d:'2'}]),'two notes in one beat']);
+  items.push([keyCell([{d:'1'},{d:'2'},{d:'3'},{d:'5'}]),'four in one beat']);
+  items.push([keyCell([]),'no new strike']);
+  items.push([keyCell([{d:'3',cls:'active'}]),'sounding now']);
+  items.push([keyCell([{d:'3',cls:'played'}]),'already played']);
+  items.push([keyCell([{d:'3',cls:'q'}]),'no bar for it']);
+  host.innerHTML='<span class="kcap">key</span>'+
+    items.map(it=>'<span class="ki">'+it[0]+'<span class="kl">'+it[1]+'</span></span>').join('');
+}
 function buildScore(){
   const sc=$('#score');sc.innerHTML='';noteEls=[];
   const row=document.createElement('div');row.className='notes';let g=null;
-  notes.forEach((nt,i)=>{
-    if(i%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
-    const known = nt.snap && nt.snap.flag!=='?';
-    const vc = known ? instrument.voices[nt.snap.index] : null;
-    const el=document.createElement('span');el.className='note'+(known?'':' q');
-    el.innerHTML = noteHtml(known?vc.label:'·', known?(vc.reg||0):0);
-    if(known) el.title=vc.label+' · '+regWord(vc.reg);
-    el.addEventListener('click',()=>{ if(!audio.src)return; audio.currentTime=nt.t; if(audio.paused) togglePlay(); });
-    g.appendChild(el);noteEls[i]=el;
+  cells.forEach(function(cell){
+    if(cell.beat%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
+    const n=cell.notes.length;
+    const beat=document.createElement('span');
+    beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
+    if(n===0) beat.title='beat '+cell.beat+' — no new strike';
+    const inner=document.createElement('span');inner.className='inner';
+    cell.notes.forEach(function(nn){
+      const e=nn.event,el=document.createElement('span');
+      el.className='note'+(e.unplayable?' q':'');
+      el.innerHTML=noteHtml(e.degree,e.reg);
+      if(!e.unplayable)el.title=e.degree+' · '+regWord(e.reg);
+      el.addEventListener('click',function(){
+        if(!T||!T.ready)return; T.currentTime=e.t; if(T.paused)togglePlay(); });
+      inner.appendChild(el); noteEls[nn.eventIndex]=el;
+    });
+    beat.appendChild(inner);
+    const beam=document.createElement('span');beam.className='beam';beat.appendChild(beam);
+    g.appendChild(beat);
   });
   sc.appendChild(row);
 }
 function paint(idx){for(let j=0;j<noteEls.length;j++){const e=noteEls[j];if(!e)continue;
   e.classList.toggle('played',j<idx);e.classList.toggle('active',j===idx);}}
-function flashBar(i){const nt=notes[i];if(!nt||!nt.snap||nt.snap.flag==='?')return;const el=barEls[nt.snap.index];if(!el)return;
+function flashBar(i){const e=events[i];if(!e||e.voiceIndex==null)return;const el=barEls[e.voiceIndex];if(!el)return;
   el.classList.add('hit');setTimeout(()=>el.classList.remove('hit'),reduce?55:95);}
 function activeIndex(t){let lo=0,hi=times.length-1,ans=-1;while(lo<=hi){const m=(lo+hi)>>1;if(times[m]<=t){ans=m;lo=m+1;}else hi=m-1;}return ans;}
+// #time is written in tick(), which only runs while playing, so a seek made
+// while paused used to leave a stale clock on screen.
+function refreshReadout(){
+  if(!T)return;
+  $('#time').textContent=fmt(T.currentTime)+' / '+fmt(T.duration);
+}
 function scrollTo(el){const box=$('#scoreScroll'),br=box.getBoundingClientRect(),er=el.getBoundingClientRect();box.scrollTop+=(er.top-br.top)-box.clientHeight/2+er.height/2;}
 function tick(){
-  const t=audio.currentTime,dur=audio.duration||1;
+  if(!T){ return; }
+  const t=T.currentTime,dur=T.duration||1;
   $('#seekFill').style.width=(100*Math.min(1,Math.max(0,t/dur)))+'%';
-  $('#time').textContent=fmt(t)+' / '+fmt(audio.duration);
+  $('#time').textContent=fmt(t)+' / '+fmt(T.duration);
   const idx=activeIndex(t);
   if(idx!==lastIdx){
     if(idx>lastIdx&&idx-lastIdx<=8){for(let j=lastIdx+1;j<=idx;j++)flashBar(j);}else if(idx>=0)flashBar(idx);
@@ -731,32 +1550,36 @@ function tick(){
     if(el){const top=el.offsetTop;if(Math.abs(top-lastTop)>3){scrollTo(el);lastTop=top;}}
     lastIdx=idx;
   }
-  if(!audio.paused) raf=requestAnimationFrame(tick);
+  if(!T.paused) raf=requestAnimationFrame(tick);
 }
-function togglePlay(){if(!audio.src)return;
-  if(audio.paused){audio.play();$('#play').textContent='Pause';cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);}
-  else{audio.pause();$('#play').textContent='Play';}}
+function togglePlay(){if(!T||!T.ready)return;
+  if(T.paused){T.play();$('#play').textContent='Pause';cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);}
+  else{T.pause();$('#play').textContent='Play';}}
 $('#play').addEventListener('click',togglePlay);
 // step one gatra (four notes) at a time, landing on gatra boundaries
+// Steps by BEAT. The old note-index arithmetic drifted on any score containing
+// rests or subdivisions, because notes and beats stop coinciding.
 function stepGatra(dir){
-  if(!times.length||!audio.src)return;
-  const here=activeIndex(audio.currentTime);
-  const g=Math.floor(Math.max(0,here)/4);
-  let target=(g+dir)*4;
-  if(here<0 && dir<0) target=0;
-  target=Math.max(0,Math.min(times.length-1,target));
-  audio.currentTime=times[target];
-  if(audio.paused){ $('#seekFill').style.width=(100*times[target]/(audio.duration||1))+'%';
-    lastIdx=-1; paint(target); }
+  if(!times.length||!T||!T.ready)return;
+  const here=activeIndex(T.currentTime);
+  const target=gatraStepTarget(events,here,dir);
+  if(target==null)return;
+  T.currentTime=times[target];
+  if(T.paused){ $('#seekFill').style.width=(100*times[target]/(T.duration||1))+'%';
+    lastIdx=-1; paint(target); refreshReadout(); }
 }
 $('#rwd').addEventListener('click',()=>stepGatra(-1));
 $('#ffwd').addEventListener('click',()=>stepGatra(1));
 audio.addEventListener('ended',()=>{$('#play').textContent='Play';});
 audio.addEventListener('pause',()=>{if($('#play').textContent!=='Play')$('#play').textContent='Play';});
-$('#seek').addEventListener('click',function(e){if(!audio.src)return;const r=this.getBoundingClientRect();
-  const frac=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));audio.currentTime=frac*(audio.duration||0);
-  $('#seekFill').style.width=(100*frac)+'%';});
-$('#speed').addEventListener('input',e=>{const v=parseFloat(e.target.value);audio.playbackRate=v;$('#speedVal').textContent=v.toFixed(2)+'×';});
+$('#seek').addEventListener('click',function(e){if(!T||!T.ready)return;const r=this.getBoundingClientRect();
+  const frac=Math.min(1,Math.max(0,(e.clientX-r.left)/r.width));T.currentTime=frac*(T.duration||0);
+  $('#seekFill').style.width=(100*frac)+'%';
+  if(T.paused){ lastIdx=-1; const i=activeIndex(T.currentTime); if(i>=0)paint(i); refreshReadout(); }});
+// For a file this is playback rate; for a score it is a tempo change that
+// reschedules, so slowing a score down does not shift its pitch.
+$('#speed').addEventListener('input',e=>{const v=parseFloat(e.target.value);
+  if(T)T.playbackRate=v;$('#speedVal').textContent=v.toFixed(2)+'×';});
 document.addEventListener('keydown',e=>{
   if($('#view-play').style.display==='none')return;
   if(e.code==='Space'&&!$('#play').disabled){ e.preventDefault(); togglePlay(); }
