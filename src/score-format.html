@@ -1,0 +1,487 @@
+<!doctype html>
+<!--
+  Gamelan Practice — how to write a score.
+  Copyright (C) 2026 Luke Ferdinand
+
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU Affero General Public License as published by the Free
+  Software Foundation, either version 3 of the License, or (at your option) any
+  later version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+  FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+  details.
+
+  You should have received a copy of the GNU Affero General Public License along
+  with this program. If not, see <https://www.gnu.org/licenses/>.
+
+  Source: https://github.com/ljferdinand/gamelan-practice
+
+  Self-contained: the parser is inlined so the editor works from file:// too.
+  It mirrors the copies in index.html and engine/score_format.mjs; change one,
+  change all three.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to write a score — Gamelan Practice</title>
+<style>
+:root{
+  --lacquer:#191410; --panel:#241b14; --panel2:#1f1710; --line:#3a2c20;
+  --parch:#ece0c8; --muted:#9d8f78; --bronze:#c0803a; --bronze2:#a86a2e;
+  --gold:#ffd36b; --glow:rgba(255,200,90,.55); --bad:#c8683a;
+  --mono:ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;color:var(--parch);
+  background:radial-gradient(1200px 520px at 50% -12%, #2b2016 0%, var(--lacquer) 62%) fixed;
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.65;}
+.wrap{max-width:900px;margin:0 auto;padding:26px 22px 70px;}
+a{color:var(--bronze)}
+h1{margin:0 0 2px;font-family:"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+   font-weight:600;font-size:29px;color:var(--gold);letter-spacing:.3px;}
+.sub{margin:0 0 6px;color:var(--muted);font-size:13px;}
+h2{font-family:"Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+   font-size:20px;font-weight:600;margin:34px 0 8px;color:var(--parch);}
+h3{font-size:15px;font-weight:600;margin:20px 0 6px;color:var(--gold);}
+p{margin:8px 0;max-width:74ch}
+code{font-family:var(--mono);font-size:.92em;background:#160f0a;border:1px solid var(--line);
+     border-radius:4px;padding:1px 5px;color:var(--gold);}
+.panel{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+  border-radius:12px;padding:18px;margin:16px 0;
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 10px 30px rgba(0,0,0,.35);}
+.btn{background:linear-gradient(180deg,var(--bronze),var(--bronze2));border:none;color:#1a120a;
+  font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:14px;
+  font-family:inherit;}
+.btn.ghost{background:#160f0a;border:1px solid var(--line);color:var(--parch);font-weight:600;}
+.btn.ghost:hover{border-color:var(--bronze);}
+.btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:10px 0;}
+th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+   text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+td{padding:7px 8px;border-bottom:1px solid #2a2016;vertical-align:top;}
+td:first-child{font-family:var(--mono);color:var(--gold);white-space:nowrap;}
+.note-box{border-left:2px solid var(--bronze2);padding:2px 0 2px 14px;color:var(--muted);
+  font-size:14px;margin:14px 0;max-width:74ch;}
+.note-box b{color:var(--parch)}
+pre{font-family:var(--mono);font-size:13px;background:#160f0a;border:1px solid var(--line);
+  border-radius:8px;padding:12px 14px;overflow-x:auto;color:var(--parch);margin:10px 0;}
+pre .c{color:var(--muted)}
+pre .k{color:var(--bronze)}
+
+/* live editor */
+.editor{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media (max-width:760px){.editor{grid-template-columns:1fr}}
+textarea{width:100%;min-height:330px;background:#160f0a;color:var(--parch);
+  border:1px solid var(--line);border-radius:8px;padding:11px 12px;
+  font-family:var(--mono);font-size:13px;line-height:1.55;resize:vertical;}
+textarea:focus-visible{outline:2px solid var(--bronze);outline-offset:1px;}
+.out{background:#160f0a;border:1px solid var(--line);border-radius:8px;padding:12px;
+  min-height:330px;max-height:520px;overflow:auto;}
+.stats{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;margin-top:8px;}
+.err{color:#f0b48c;background:rgba(200,104,58,.12);border:1px solid var(--bad);
+  border-radius:8px;padding:9px 11px;font-size:13px;margin-top:8px;font-family:var(--mono);}
+.warnmsg{color:var(--gold);font-size:12.5px;margin-top:8px;}
+
+/* score rendering — identical classes to the app */
+.notes{display:flex;flex-wrap:wrap;row-gap:14px;}
+.gatra{display:inline-flex;padding-right:12px;margin-right:6px;border-right:1px solid var(--line);}
+.gatra:last-child{border-right:none;}
+.beat{display:inline-flex;flex-direction:column;align-items:center;min-width:26px;}
+.beat .inner{display:inline-flex;align-items:flex-end;justify-content:center;}
+.beat .beam{height:5px;align-self:stretch;margin:1px 2.5px 0;}
+.beat.sub2 .beam{border-top:1px solid var(--bronze);}
+.beat.sub4 .beam{border-top:1px solid var(--bronze);box-shadow:0 3px 0 -2px var(--bronze);}
+.beat.rest .inner{min-height:25px;}
+.beat.rest .inner::after{content:'';width:4px;height:4px;border-radius:50%;
+  background:var(--parch);opacity:.5;align-self:center;}
+.note{position:relative;min-width:24px;padding:0 2px;display:inline-flex;flex-direction:column;
+  align-items:center;justify-content:center;}
+.note .d{font-size:15px;line-height:17px;font-variant-numeric:tabular-nums;color:var(--parch);}
+.note .dots{display:flex;gap:2px;height:4px;align-items:center;justify-content:center;}
+.note .dots i{width:3px;height:3px;border-radius:50%;background:var(--parch);display:block;}
+.note.damp .d{color:var(--bad);}
+.foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);
+  padding-top:14px;margin-top:40px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>How to write a score</h1>
+  <p class="sub">Gamelan Practice · <a href="index.html">back to the app</a></p>
+</header>
+
+<p>A score is a plain text file. You can write one in any editor, and the app plays
+it through the samples you recorded from your own instrument. Nothing about it is
+tied to a particular gamelan: it names your own numbers, and the app binds those
+to the bars you measured.</p>
+
+<h2>The one idea worth understanding first</h2>
+<p><b>Position is duration.</b> There are no timestamps and no note lengths. A
+score is a row of beats, and where a note sits <i>is</i> when it sounds and how
+long it has. This is not a simplification — it is how the music works. Measured
+across a real performance, 77% of note gaps were exactly one beat and 19% were
+half-beat subdivisions; the rest were multi-beat rests. A beat grid and a tempo
+carry all of it.</p>
+
+<div class="note-box">A bar keeps ringing after it is struck, so a beat with no
+note is not silence. It means <b>no new strike</b> — the sound already in the air
+continues. Stopping a bar deliberately is a different event, and has its own mark.</div>
+
+<h2>Try it</h2>
+<p>Edit the text on the left. The right side is what the app will draw. Notice
+that none of the file's punctuation appears on screen: register becomes dots,
+a subdivision becomes a beam, a rest becomes an empty beat.</p>
+
+<div class="panel">
+  <div class="editor">
+    <div>
+      <textarea id="src" spellcheck="false" aria-label="score source"></textarea>
+      <div class="stats" id="stats"></div>
+      <div id="problems"></div>
+    </div>
+    <div>
+      <div class="out"><div class="notes" id="out"></div></div>
+      <div class="stats">what the app draws</div>
+    </div>
+  </div>
+  <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <button class="btn" id="dlSample">Download the sample score</button>
+    <button class="btn ghost" id="reset">Reset the editor</button>
+    <button class="btn ghost" id="dlCurrent">Download what I have written</button>
+  </div>
+  <p class="stats" style="margin-top:10px">The sample uses only unmarked degrees
+    1–5, so it plays on any five-tone instrument whatever its register layout.
+    It is a made-up practice pattern for testing the app, not a traditional piece.</p>
+</div>
+
+<h2>Anatomy of a score</h2>
+<pre><span class="c"># Anything after a hash is a comment.</span>
+<span class="k">name:</span> Practice pattern      <span class="c"># shown when the score loads</span>
+<span class="k">bpm:</span> 100                   <span class="c"># beats per minute — required</span>
+<span class="k">style:</span> jv                   <span class="c"># dot convention for display only</span>
+
+<span class="k">[A] x2</span>                       <span class="c"># a section, played twice</span>
+1 2 3 5 | 3 2 1 .           <span class="c"># four beats, a bar line, four more</span>
+</pre>
+<p>A header of <code>key: value</code> lines comes first, then one or more
+sections. Everything else is beats.</p>
+
+<h2>Glossary</h2>
+<table>
+  <thead><tr><th>you write</th><th>it means</th></tr></thead>
+  <tbody>
+  <tr><td>3</td><td>Strike the bar you labelled <code>3</code>, in the middle register. One beat.</td></tr>
+  <tr><td>_3</td><td>The <code>3</code> one octave <b>down</b>. Drawn with a dot below.</td></tr>
+  <tr><td>^3</td><td>The <code>3</code> one octave <b>up</b>. Drawn with a dot above.</td></tr>
+  <tr><td>__3 &nbsp; ^^3</td><td>Two octaves down or up. Stack as far as your instrument goes.</td></tr>
+  <tr><td>3-3</td><td>Two notes sharing one beat, evenly. Drawn under one beam.</td></tr>
+  <tr><td>1-2-3-5</td><td>Four notes sharing one beat. Drawn under a double beam.</td></tr>
+  <tr><td>.</td><td>A beat with no new strike. The bars already sounding carry on.</td></tr>
+  <tr><td>*</td><td>Damp: stop the sound on this beat. Not the same as a rest.</td></tr>
+  <tr><td>|</td><td>A bar line. Read by people, checked by the app, never drawn.</td></tr>
+  <tr><td>[Name]</td><td>Start a section.</td></tr>
+  <tr><td>[Name] x3</td><td>Start a section played three times.</td></tr>
+  <tr><td>[B] = A</td><td>Section B is another copy of section A.</td></tr>
+  <tr><td>[B] = A oct+1</td><td>Section B is section A, an octave higher.</td></tr>
+  <tr><td># …</td><td>A comment, to the end of the line.</td></tr>
+  </tbody>
+</table>
+
+<h2>Your numbers, not anyone else's</h2>
+<p>The digits are whatever you typed on the Calibrate tab. If your instrument
+counts <code>1 2 3 5 6</code>, write that. If its numbering runs opposite to
+pitch — so that <code>5</code> is the lowest bar of an octave and <code>1</code>
+the highest — write that too. The app never assumes a scale; it plays the bar
+carrying the label you wrote.</p>
+<p>If a score asks for a bar your instrument does not have, the app says so when
+the score loads and leaves those notes silent rather than guessing.</p>
+
+<h2>Register, and why it is not written as dots</h2>
+<p>Register is written as <code>_</code> and <code>^</code>, never as a dot,
+because the two traditions disagree about what a dot means. In Central Javanese
+kepatihan a dot above means the octave <b>above</b>; Sundanese notation is the
+reverse. A file saying "dot above" would mean opposite things to two readers, so
+the file states the octave and the app draws whichever dot your setting calls for.</p>
+<p>Register is also per note, not per section, because melodies cross octave
+boundaries constantly. In one real piece the same phrase appeared twice, an
+octave apart, and within each statement it straddled the boundary — some notes
+in the middle register and some below.</p>
+
+<h3>Try these in the editor</h3>
+<pre>bpm: 100
+[low]
+_5 _4 _3 _2 | _1 . . .
+[middle]
+5 4 3 2 | 1 . . .
+[high] = middle oct+1
+</pre>
+
+<h2>Rests, holds and damping</h2>
+<p>Three different things, easy to confuse:</p>
+<table>
+  <tbody>
+  <tr><td>.</td><td><b>No new strike.</b> Whatever is ringing keeps ringing. This is
+    what most gaps in gamelan actually are, and it is what a rest in this format means.</td></tr>
+  <tr><td>*</td><td><b>Damp.</b> You stop the bar with your hand. A real action, a real
+    sound, and audibly different from letting it ring.</td></tr>
+  <tr><td>—</td><td><b>A held note</b> needs no mark at all. A bar struck once and left
+    alone rings through the following beats on its own; write the strike and then
+    leave the beats empty.</td></tr>
+  </tbody>
+</table>
+
+<h2>Gatra and the bar line</h2>
+<p>Beats group in fours. The <code>|</code> you type is for your own eyes, but the
+app counts it: if a group between bar lines is not four beats, it tells you which
+one, so a miscounted line is caught before you hear it. A final short group is
+normal and never warned about, since a piece may end mid-gatra.</p>
+<p>The app's <code>◀◀</code> and <code>▶▶</code> buttons move exactly one gatra
+at a time, which is why keeping the grouping honest is worth the trouble.</p>
+
+<h2>Tempo</h2>
+<p>Give either <code>bpm: 100</code> or <code>beat: 0.6</code> (seconds per beat).
+One is required. The speed slider on the Play along tab changes the tempo without
+changing the pitch, because a score is played from samples rather than stretched
+from a recording.</p>
+
+<h2>Letting the app write a score for you</h2>
+<p>You do not have to start from a blank file. On the Play along tab, transcribe a
+recording of yourself and press <b>Save as score</b>. The app writes out what it
+heard, in this format, and works out the tempo, the rests and the subdivisions.</p>
+<div class="note-box">Worth knowing what that file is: the <b>onset times are
+measured</b>, but the <b>beat grid is inferred</b>. Every generated score states
+its own fit in a comment at the top — the quantisation residual, in milliseconds
+and as a percentage of a beat. A small residual with playback that still sounds
+wrong points at the samples. A large residual points at the grid, meaning the
+performance does not sit neatly on a beat. Either way you learn something.</div>
+
+<h2>When something is wrong</h2>
+<table>
+  <thead><tr><th>message</th><th>what to do</th></tr></thead>
+  <tbody>
+  <tr><td>needs a bpm or beat</td><td>Add <code>bpm: 100</code> to the header, above the first section.</td></tr>
+  <tr><td>cannot read note "x"</td><td>A token the app cannot parse. Degrees are letters or digits, optionally led by <code>_</code> or <code>^</code>.</td></tr>
+  <tr><td>empty subdivision slot</td><td>A dangling hyphen, as in <code>3-</code>. Each side of a hyphen needs a note.</td></tr>
+  <tr><td>unknown section modifier</td><td>Only <code>xN</code> and <code>oct+N</code> / <code>oct-N</code> follow a section name.</td></tr>
+  <tr><td>refers to unknown section</td><td><code>[B] = A</code> needs a section actually called <code>A</code>, spelled the same way.</td></tr>
+  <tr><td>cannot also have a body</td><td>A section defined as a copy of another cannot have its own notes.</td></tr>
+  <tr><td>gatra group not 4 beats</td><td>A warning, not an error. Count the beats between your bar lines.</td></tr>
+  </tbody>
+</table>
+
+<div class="foot">
+  Gamelan Practice · <a href="index.html">back to the app</a> ·
+  free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU AGPL v3</a> ·
+  <a href="https://github.com/ljferdinand/gamelan-practice">source code</a>
+</div>
+</div>
+
+<script>
+"use strict";
+/* Parser inlined from index.html so this page works from file:// as well.
+   Mirror any change here into the app, and into engine/score_format.mjs. */
+const RE_HEADER=/^([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.*)$/;
+const RE_SECTION=/^\[\s*([^\]]+?)\s*\]\s*(.*)$/;
+const RE_NOTE=/^([_^]*)([0-9A-Za-z]+)$/;
+function scoreErr(m,line){const e=new Error(line!=null?('line '+line+': '+m):m);e.name='ScoreError';return e;}
+function parseToken(raw,ln){
+  if(raw==='.')return{kind:'rest'};
+  if(raw==='*')return{kind:'damp'};
+  const parts=raw.split('-'),notes=[];
+  for(const pt of parts){
+    if(pt==='')throw scoreErr('empty subdivision slot in "'+raw+'"',ln);
+    if(pt==='.'||pt==='*'){notes.push({kind:pt==='.'?'rest':'damp'});continue;}
+    const m=RE_NOTE.exec(pt);
+    if(!m)throw scoreErr('cannot read note "'+pt+'" in token "'+raw+'"',ln);
+    let reg=0;for(const ch of m[1])reg+=ch==='^'?1:-1;
+    notes.push({kind:'note',degree:m[2],reg:reg});
+  }
+  return{kind:'beat',notes:notes};
+}
+function parseScore(text){
+  const header={},sections=[],warnings=[];let cur=null,saw=false;
+  const lines=text.split(/\r?\n/);
+  for(let i=0;i<lines.length;i++){
+    const ln=i+1;let line=lines[i];
+    const h=line.indexOf('#');if(h>=0)line=line.slice(0,h);
+    line=line.trim();if(!line)continue;
+    const ms=RE_SECTION.exec(line);
+    if(ms){
+      saw=true;const name=ms[1].trim(),rest=ms[2].trim();
+      let times=1,from=null,oct=0;
+      if(rest){
+        const eq=/^=\s*([^\s]+)\s*(.*)$/.exec(rest);let tail=rest;
+        if(eq){from=eq[1];tail=eq[2].trim();}
+        for(const tk of tail.split(/\s+/).filter(Boolean)){
+          const mx=/^x(\d+)$/i.exec(tk),mo=/^oct([+-]\d+)$/i.exec(tk);
+          if(mx)times=parseInt(mx[1],10);
+          else if(mo)oct=parseInt(mo[1],10);
+          else throw scoreErr('unknown section modifier "'+tk+'"',ln);
+        }
+      }
+      if(times<1)throw scoreErr('repeat count must be at least 1',ln);
+      cur={name:name,times:times,from:from,octShift:oct,beats:[],gatra:[],line:ln};
+      sections.push(cur);continue;
+    }
+    const mh=RE_HEADER.exec(line);
+    if(mh&&!saw){header[mh[1].toLowerCase()]=mh[2].trim();continue;}
+    if(!cur){cur={name:'',times:1,from:null,octShift:0,beats:[],gatra:[],line:ln};sections.push(cur);}
+    if(cur.from)throw scoreErr('section "'+cur.name+'" is a copy of "'+cur.from+'" and cannot also have a body',ln);
+    let run=0;
+    for(const raw of line.split(/\s+/).filter(Boolean)){
+      if(raw==='|'){cur.gatra.push(run);run=0;continue;}
+      cur.beats.push(parseToken(raw,ln));run++;
+    }
+    if(run)cur.gatra.push(run);
+  }
+  let beatSec=null;
+  if(header.beat)beatSec=parseFloat(header.beat);
+  else if(header.bpm)beatSec=60/parseFloat(header.bpm);
+  if(!beatSec||!(beatSec>0))throw scoreErr('the score needs a bpm or beat line in its header');
+  for(const sec of sections){
+    const interior=sec.gatra.slice(0,-1);
+    const bad=interior.map((g,i)=>[i,g]).filter(x=>x[1]!==4);
+    if(interior.length&&bad.length)
+      warnings.push('section "'+(sec.name||'(unnamed)')+'" (line '+sec.line+
+        '): gatra group(s) not 4 beats at position(s) '+
+        bad.map(x=>(x[0]+1)+'(='+x[1]+')').join(', '));
+  }
+  const byName=new Map(sections.filter(x=>x.name).map(x=>[x.name,x]));
+  for(const sec of sections){
+    if(!sec.from)continue;
+    const src=byName.get(sec.from);
+    if(!src)throw scoreErr('section "'+sec.name+'" refers to unknown section "'+sec.from+'"',sec.line);
+    if(src.from)throw scoreErr('section "'+sec.name+'" refers to "'+sec.from+'", itself a reference',sec.line);
+    sec.beats=src.beats;sec.gatra=src.gatra;
+  }
+  return{header:header,sections:sections,beatSec:beatSec,
+    style:(header.style||'jv').toLowerCase(),warnings:warnings};
+}
+function scoreToEvents(score){
+  const events=[];let beat=0;
+  for(const sec of score.sections){
+    for(let rep=0;rep<sec.times;rep++){
+      for(const tk of sec.beats){
+        if(tk.kind==='rest'){beat++;continue;}
+        if(tk.kind==='damp'){events.push({t:beat*score.beatSec,beat:beat,kind:'damp'});beat++;continue;}
+        const n=tk.notes.length;
+        tk.notes.forEach(function(nt,k){
+          const sub=beat+k/n;
+          if(nt.kind==='note')
+            events.push({t:sub*score.beatSec,beat:sub,kind:'note',
+              degree:nt.degree,reg:nt.reg+sec.octShift});
+          else if(nt.kind==='damp')
+            events.push({t:sub*score.beatSec,beat:sub,kind:'damp'});
+        });
+        beat++;
+      }
+    }
+  }
+  return{events:events,totalBeats:beat,duration:beat*score.beatSec};
+}
+function layoutBeats(events,totalBeats){
+  const n=totalBeats!=null?totalBeats:0,cells=[];
+  for(let b=0;b<n;b++)cells.push({beat:b,gatra:Math.floor(b/4),notes:[]});
+  events.forEach(function(e,i){
+    const b=Math.floor(e.beat+1e-9);
+    if(b>=0&&b<cells.length)cells[b].notes.push({event:e,eventIndex:i});
+  });
+  cells.forEach(c=>c.notes.sort((p,q)=>p.event.beat-q.event.beat));
+  return cells;
+}
+
+const SAMPLE = [
+'# A practice pattern for testing playback. Made up for this purpose,',
+'# not a traditional piece. Uses only unmarked degrees 1-5, so it plays',
+'# on any five-tone instrument whatever its register layout.',
+'',
+'name: Practice pattern',
+'bpm: 100',
+'style: jv',
+'',
+'# Four gatra, played twice.',
+'[A] x2',
+'1 2 3 5 | 3 2 1 .   | 5 3 2 1 | 2 3-3 2 .',
+'',
+'# A denser answering phrase.',
+'[B]',
+'3-2 1-2 3 5 | 5-3 2-1 2 . | 1 2 3-5 3 | 2 1 . .',
+'',
+'# Round off on A once more.',
+'[A again] = A',
+''].join('\n');
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+let DOT='jv';
+const dotAbove=r=>DOT==='sd'?(r<0):(r>0);
+function noteHtml(label,reg){
+  const k=Math.abs(reg||0),up=dotAbove(reg);
+  const above=(k&&up)?'<i></i>'.repeat(k):'';
+  const below=(k&&!up)?'<i></i>'.repeat(k):'';
+  return '<span class="dots">'+above+'</span><span class="d">'+esc(label)+
+         '</span><span class="dots">'+below+'</span>';
+}
+function render(){
+  const txt=$('#src').value;
+  const out=$('#out'),problems=$('#problems'),stats=$('#stats');
+  out.innerHTML='';problems.innerHTML='';
+  let sc;
+  try{ sc=parseScore(txt); }
+  catch(err){
+    problems.innerHTML='<div class="err">'+esc(err.message)+'</div>';
+    stats.textContent='';
+    return;
+  }
+  DOT=(sc.style==='sd')?'sd':'jv';
+  const ev=scoreToEvents(sc);
+  const cells=layoutBeats(ev.events,ev.totalBeats);
+  let g=null;
+  cells.forEach(function(cell){
+    if(cell.beat%4===0){g=document.createElement('span');g.className='gatra';out.appendChild(g);}
+    const n=cell.notes.length;
+    const beat=document.createElement('span');
+    beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
+    if(n===0)beat.title='beat '+cell.beat+' — no new strike';
+    const inner=document.createElement('span');inner.className='inner';
+    cell.notes.forEach(function(nn){
+      const e=nn.event,el=document.createElement('span');
+      el.className='note'+(e.kind==='damp'?' damp':'');
+      el.innerHTML=noteHtml(e.kind==='damp'?'\u00d7':e.degree,e.reg||0);
+      inner.appendChild(el);
+    });
+    beat.appendChild(inner);
+    const beam=document.createElement('span');beam.className='beam';beat.appendChild(beam);
+    g.appendChild(beat);
+  });
+  const rests=cells.filter(c=>c.notes.length===0).length;
+  const subs=cells.filter(c=>c.notes.length>1).length;
+  const notes=ev.events.filter(e=>e.kind==='note').length;
+  const mins=Math.floor(ev.duration/60),secs=Math.round(ev.duration%60);
+  stats.textContent=notes+' notes · '+ev.totalBeats+' beats · '+
+    (new Set(cells.map(c=>c.gatra)).size)+' gatra · '+rests+' rests · '+
+    subs+' subdivided · '+sc.sections.length+' section'+(sc.sections.length>1?'s':'')+
+    ' · '+mins+':'+(secs<10?'0':'')+secs+' at '+Math.round(60/sc.beatSec)+' bpm';
+  if(sc.warnings.length)
+    problems.innerHTML='<div class="warnmsg">'+sc.warnings.map(esc).join('<br>')+'</div>';
+}
+function save(name,text){
+  const url=URL.createObjectURL(new Blob([text],{type:'text/plain'}));
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+}
+$('#src').value=SAMPLE;
+$('#src').addEventListener('input',render);
+$('#reset').addEventListener('click',()=>{$('#src').value=SAMPLE;render();});
+$('#dlSample').addEventListener('click',()=>save('practice-pattern.score',SAMPLE));
+$('#dlCurrent').addEventListener('click',()=>save('my.score',$('#src').value));
+render();
+</script>
+</body>
+</html>
