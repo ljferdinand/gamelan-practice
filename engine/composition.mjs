@@ -1,8 +1,14 @@
 // composition.mjs
 //
 // Copyright (C) 2026 Luke Ferdinand
-// Licensed under the GNU Affero General Public License v3 or later.
-// Source: https://github.com/ljferdinand/gamelan-practice
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of the GNU Affero General Public License as published by the Free
+// Software Foundation, either version 3 of the License, or (at your option) any
+// later version. This program is distributed WITHOUT ANY WARRANTY; without even
+// the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU Affero General Public License <https://www.gnu.org/licenses/> for
+// more details.  Source: https://github.com/ljferdinand/gamelan-practice
 //
 // Plays a written score through sampled voices, and unifies score rendering so
 // that transcriptions and compositions go through ONE code path.
