@@ -136,6 +136,16 @@ table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear
 .beat.rest .inner{min-height:25px;}
 .beat.rest .inner::after{content:'';width:4px;height:4px;border-radius:50%;
   background:var(--parch);opacity:.5;align-self:center;}
+/* --- D: practice patterns, listed below the score --- */
+.patterns-head{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px;}
+.pattern{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:10px;background:#1b140d;}
+.pattern.looping{border-color:var(--bronze);box-shadow:0 0 0 1px var(--bronze) inset;}
+.pattern .plab{display:flex;align-items:baseline;gap:8px;margin-bottom:7px;}
+.pattern .pname{color:var(--gold);font-weight:700;font-size:13px;}
+.pattern .pmeta{color:var(--muted);font-size:11px;}
+.pattern .ploop{margin-left:auto;font-size:11px;color:var(--bronze);opacity:0;}
+.pattern.looping .ploop{opacity:1;}
+.pattern .notes{cursor:pointer;}
 .empty{color:var(--muted);text-align:center;padding:24px;font-size:14px;}
 .foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);padding-top:14px;margin-top:6px;}
 .foot b{color:var(--parch);}
@@ -274,6 +284,10 @@ table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear
       <div class="notekey" id="notekey"></div>
       <div class="score" id="scoreScroll"><div id="score"><div class="empty">Load a performance and transcribe it to follow along.</div></div></div>
     </div>
+    <div class="panel" id="patternsPanel" style="display:none;">
+      <p class="patterns-head">Practice patterns — click a note to loop that phrase</p>
+      <div id="patterns"></div>
+    </div>
   </section>
 
   <div class="foot">
@@ -282,6 +296,7 @@ table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear
     You can also write a score as plain text and have it played through your own samples —
     see <a href="score-format.html" style="color:var(--bronze)">how to write a score</a>,
     which includes a live editor and a sample you can download and play.<br>
+    When you transcribe a recording, the beat grid you see (the rests and the beamed subdivisions) is <b>inferred</b> from the measured strike times rather than dictated by the recording, so check it by ear.<br>
     Free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" style="color:var(--bronze)">GNU AGPL v3</a> · <a href="https://github.com/ljferdinand/gamelan-practice" style="color:var(--bronze)">source code</a>
   </div>
 </div>
@@ -662,6 +677,20 @@ function eventsFromTranscription(ns,voices){
       reg:v?(v.reg||0):0,voiceIndex:known?n.snap.index:null,unplayable:!known};
   });
 }
+// A (grid-rendered transcription): place each strike at its INFERRED beat, so
+// the screen shows the same rest / subdivision notation a score does. The onset
+// time (t) is kept for the play-head, so the highlight stays locked to the real
+// audio while the layout follows the (inferred) grid — the two are independent.
+// Off-tune / out-of-vocabulary strikes are KEPT here, unlike eventsToScoreText,
+// which drops them: the screen must not lose a strike you can hear.
+function eventsFromTranscriptionGrid(ns,voices,grid){
+  return ns.map(function(n,i){
+    const known=n.snap&&n.snap.flag!=='?';
+    const v=known?voices[n.snap.index]:null;
+    return{beat:grid.beats[i],t:n.t,kind:'note',degree:v?String(v.label):'\u00b7',
+      reg:v?(v.reg||0):0,voiceIndex:known?n.snap.index:null,unplayable:!known};
+  });
+}
 function bindEvents(events,voices){
   const table=new Map();
   voices.forEach((v,i)=>table.set(v.label+'@'+(v.reg|0),i));
@@ -705,8 +734,17 @@ function gatraStepTarget(events,curIdx,dir,perGatra){
 /* Two transports exposing the same small surface, so tick(), the seek bar, the
    speed slider and the gatra buttons work against either without change. */
 function AudioFileTransport(audio){
-  this.audio=audio; this.onended=null; const self=this;
-  audio.addEventListener('ended',function(){if(self.onended)self.onended();});
+  this.audio=audio; this.onended=null; this.loopStart=null; this.loopEnd=null; const self=this;
+  // Region loop: <audio> has no native A/B loop, so wrap on timeupdate. tick()
+  // also enforces this at frame rate for a tighter seam; this is the backstop,
+  // and it catches the case where the loop ends exactly at the file end.
+  audio.addEventListener('timeupdate',function(){
+    if(self.loopEnd!=null&&self.audio.currentTime>=self.loopEnd) self.audio.currentTime=self.loopStart||0;
+  });
+  audio.addEventListener('ended',function(){
+    if(self.loopEnd!=null){ self.audio.currentTime=self.loopStart||0; self.audio.play(); return; }
+    if(self.onended)self.onended();
+  });
 }
 Object.defineProperties(AudioFileTransport.prototype,{
   ready:{get(){return!!this.audio.src;}},
@@ -718,6 +756,8 @@ Object.defineProperties(AudioFileTransport.prototype,{
 AudioFileTransport.prototype.play=function(){this.audio.play();};
 AudioFileTransport.prototype.pause=function(){this.audio.pause();};
 AudioFileTransport.prototype.dispose=function(){this.audio.pause();};
+AudioFileTransport.prototype.setLoop=function(a,b){this.loopStart=a;this.loopEnd=b;};
+AudioFileTransport.prototype.clearLoop=function(){this.loopStart=this.loopEnd=null;};
 
 // Schedules sampled voices against an AudioContext. Speed is a TEMPO change
 // that reschedules, not a resampling: slowing a score must not shift its pitch.
@@ -728,7 +768,7 @@ function CompositionTransport(ctx,cfg){
   this._duration=(cfg.totalBeats||0)*cfg.beatSec;
   this._rate=1;this._pos=0;this._anchor=0;this._paused=true;
   this._next=0;this._live=[];this._timer=0;this.onended=null;
-  this.LOOKAHEAD=0.35;this.TICK_MS=90;
+  this.LOOKAHEAD=0.35;this.TICK_MS=90;this.loopStart=null;this.loopEnd=null;
   this._out=ctx.createGain();this._out.gain.value=cfg.gain==null?1:cfg.gain;
   this._out.connect(ctx.destination);
 }
@@ -763,7 +803,10 @@ CompositionTransport.prototype._stopLive=function(){
 CompositionTransport.prototype._pump=function(){
   if(this._paused)return;
   const now=this.currentTime,horizon=now+this.LOOKAHEAD,self=this;
-  while(this._next<this.events.length&&this.events[this._next].t<=horizon){
+  // With a loop armed, never schedule past its end, or notes from the next pass
+  // would sound during this one before tick() wraps us back.
+  const cap=this.loopEnd!=null?Math.min(horizon,this.loopEnd):horizon;
+  while(this._next<this.events.length&&this.events[this._next].t<=cap){
     const e=this.events[this._next++],buf=this.buffers[e.voiceIndex];
     if(!buf)continue;
     const when=this._anchor+(e.t-this._pos)/this._rate;
@@ -773,6 +816,7 @@ CompositionTransport.prototype._pump=function(){
     this._live.push(src);
     src.onended=function(){const k=self._live.indexOf(src);if(k>=0)self._live.splice(k,1);};
   }
+  if(this.loopEnd!=null&&now>=this.loopEnd){ this.seek(this.loopStart||0); return; }
   if(now>=this._duration){
     this.pause();this._pos=this._duration;
     if(this.onended)this.onended();
@@ -800,6 +844,8 @@ CompositionTransport.prototype.seek=function(t){
 CompositionTransport.prototype.dispose=function(){
   this.pause();try{this._out.disconnect();}catch(e){}
 };
+CompositionTransport.prototype.setLoop=function(a,b){this.loopStart=a;this.loopEnd=b;};
+CompositionTransport.prototype.clearLoop=function(){this.loopStart=this.loopEnd=null;};
 
 /* ===================== beat inference (performance -> score) =====================
    The onsets are MEASURED. The grid below is INFERRED, and the two must not be
@@ -1082,6 +1128,7 @@ $('#dotStyle').addEventListener('change',()=>{
   buildLegend();
   if(instrument) buildBars();
   if(notes&&notes.length){ buildScore(); lastIdx=-1; lastTop=-1; }
+  if(patterns.length) buildPatternPanel();
 });
 
 // ---- sweep file ----
@@ -1410,6 +1457,7 @@ async function loadScoreText(text,label){
     T.onended=()=>{ $('#play').textContent='Play'; };
     if(audio.src){ audio.pause(); }
     buildScore();
+    activeLoop=null; detectPatterns();
     $('#play').disabled=false;$('#rwd').disabled=false;$('#ffwd').disabled=false;
     lastIdx=-1;lastTop=-1;$('#seekFill').style.width='0%';$('#play').textContent='Play';
     refreshReadout();
@@ -1445,25 +1493,37 @@ $('#analyzePerf').addEventListener('click',async()=>{
     const {samples,sr}=await decodeFile(f);
     const refs=instrument.voices.map(v=>v.f0);
     notes=transcribe(samples,sr,refs);
-    // Same event shape a score produces, so one renderer serves both.
-    events=eventsFromTranscription(notes,instrument.voices);
-    cells=layoutBeats(events,events.length);
+    // (A) Infer the beat grid FIRST, then lay the transcription out on it, so the
+    // on-screen notation shows the same rests and beamed subdivisions a score
+    // does. The onsets feeding the grid are the measured strike times, and each
+    // event keeps its measured onset (t) for the play-head, so the highlight
+    // stays locked to the real audio while the layout follows the inferred grid.
+    // Fall back to the flat one-note-per-beat stream when there are too few
+    // strikes to infer a grid.
+    const onsetTimes=notes.map(n=>n.t);
+    perfGrid=inferBeatGrid(onsetTimes);
+    events = perfGrid
+      ? eventsFromTranscriptionGrid(notes,instrument.voices,perfGrid)
+      : eventsFromTranscription(notes,instrument.voices);
+    cells=layoutBeats(events, perfGrid?perfGrid.totalBeats:events.length);
     times=events.map(e=>e.t);
     if(audio.src) URL.revokeObjectURL(audio.src);
     audio.src=URL.createObjectURL(f);
     if(T&&T.dispose)T.dispose();
     T=new AudioFileTransport(audio);
     T.onended=()=>{ $('#play').textContent='Play'; };
-    perfGrid=inferBeatGrid(times);
     perfName=(f.name||'performance').replace(/\.[^.]+$/,'');
     $('#exportScore').disabled=!perfGrid;
     buildScore();
+    activeLoop=null; detectPatterns();
     $('#play').disabled=false; $('#rwd').disabled=false; $('#ffwd').disabled=false;
     lastIdx=-1; lastTop=-1; $('#seekFill').style.width='0%';
     let tm='Transcribed '+notes.length+' strikes.';
-    if(perfGrid) tm+=' Inferred beat '+(60/perfGrid.beatSec).toFixed(1)+' bpm, fit '+
-      perfGrid.residualMs.toFixed(0)+' ms ('+perfGrid.residualPct.toFixed(1)+
-      '% of a beat) — save it as a score to hear it played back through your samples.';
+    if(perfGrid) tm+=' The notation below is laid out on an inferred beat of '+
+      (60/perfGrid.beatSec).toFixed(1)+' bpm, fit '+perfGrid.residualMs.toFixed(0)+' ms ('+
+      perfGrid.residualPct.toFixed(1)+'% of a beat); check it by ear. Save it as a score '+
+      'to hear it played back through your samples.';
+    else tm+=' Too few strikes to infer a beat grid, so the notation is a flat, one-note-per-beat stream.';
     msg(tm+' Press play.','info');
   }catch(err){ msg(err.message,'err'); }
   finally{ $('#analyzePerf').disabled=false;$('#analyzePerf').textContent='Transcribe'; }
@@ -1501,30 +1561,174 @@ function buildLegend(){
   host.innerHTML='<span class="kcap">key</span>'+
     items.map(it=>'<span class="ki">'+it[0]+'<span class="kl">'+it[1]+'</span></span>').join('');
 }
+// One beat cell as a DOM node, shared by the main score and the pattern panel so
+// the two cannot drift. `register` records each note in noteEls for the play-head
+// (main score only); `click` fires with the event when a note is tapped.
+function makeBeatCell(cell,opts){
+  opts=opts||{};
+  const n=cell.notes.length;
+  const beat=document.createElement('span');
+  beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
+  if(n===0) beat.title='beat '+cell.beat+' — no new strike';
+  const inner=document.createElement('span');inner.className='inner';
+  cell.notes.forEach(function(nn){
+    const e=nn.event,el=document.createElement('span');
+    el.className='note'+(e.unplayable?' q':'');
+    el.innerHTML=noteHtml(e.degree,e.reg);
+    if(!e.unplayable)el.title=e.degree+' · '+regWord(e.reg);
+    if(opts.click) el.addEventListener('click',function(){opts.click(e);});
+    inner.appendChild(el);
+    if(opts.register) noteEls[nn.eventIndex]=el;
+  });
+  beat.appendChild(inner);
+  const beam=document.createElement('span');beam.className='beam';beat.appendChild(beam);
+  return beat;
+}
 function buildScore(){
   const sc=$('#score');sc.innerHTML='';noteEls=[];
   const row=document.createElement('div');row.className='notes';let g=null;
   cells.forEach(function(cell){
     if(cell.beat%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
-    const n=cell.notes.length;
-    const beat=document.createElement('span');
-    beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
-    if(n===0) beat.title='beat '+cell.beat+' — no new strike';
-    const inner=document.createElement('span');inner.className='inner';
-    cell.notes.forEach(function(nn){
-      const e=nn.event,el=document.createElement('span');
-      el.className='note'+(e.unplayable?' q':'');
-      el.innerHTML=noteHtml(e.degree,e.reg);
-      if(!e.unplayable)el.title=e.degree+' · '+regWord(e.reg);
-      el.addEventListener('click',function(){
-        if(!T||!T.ready)return; T.currentTime=e.t; if(T.paused)togglePlay(); });
-      inner.appendChild(el); noteEls[nn.eventIndex]=el;
-    });
-    beat.appendChild(inner);
-    const beam=document.createElement('span');beam.className='beam';beat.appendChild(beam);
-    g.appendChild(beat);
+    // A tap on the main grid seeks there and cancels any active practice loop.
+    g.appendChild(makeBeatCell(cell,{register:true,click:function(e){
+      clearActiveLoop(); if(!T||!T.ready)return; T.currentTime=e.t; if(T.paused)togglePlay(); }}));
   });
   sc.appendChild(row);
+}
+
+/* ===================== D: practice patterns ===================== */
+let patterns=[], activeLoop=null;
+
+// Map a beat position to a time. For a score, beats are exact multiples of the
+// beat length. For a transcription, use the measured onset at or after that beat
+// — the recording, not the inferred spacing, is the truth the loop rides.
+function beatToTime(beat){
+  if(notes.length){
+    for(let i=0;i<events.length;i++) if(events[i].beat>=beat-1e-9) return events[i].t;
+    return T?T.duration:0;
+  }
+  return scoreDoc?beat*scoreDoc.beatSec:0;
+}
+// Content signature of one beat: its notes (degree@register) in order, or '.' for
+// a rest. Two beats with the same signature are "the same" for repeat detection;
+// a subdivision is several notes in the one beat.
+function cellSig(cell){
+  if(!cell.notes.length) return '.';
+  return cell.notes.map(nn=>nn.event.degree+'@'+(nn.event.reg|0)).join('-');
+}
+// TRANSCRIPTION patterns: maximal repeated runs over the beat signatures. Longest
+// first; once a run is taken its beats are marked used, so shorter fragments
+// nested inside it are suppressed. A run must be >= minLen beats and recur at
+// >= 2 non-overlapping places.
+function detectRepeats(cells,minLen){
+  const n=cells.length, sig=cells.map(cellSig), used=new Array(n).fill(false), out=[];
+  for(let L=n>>1;L>=minLen;L--){
+    const groups=new Map();
+    for(let i=0;i+L<=n;i++){
+      let free=true; for(let k=i;k<i+L;k++) if(used[k]){free=false;break;}
+      if(!free) continue;
+      const key=sig.slice(i,i+L).join('|');
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(i);
+    }
+    for(const entry of groups){
+      const starts=entry[1];
+      if(starts.length<2) continue;
+      const occ=[]; let lastEnd=-1;
+      for(const s of starts){
+        let free=true; for(let k=s;k<s+L;k++) if(used[k]){free=false;break;}
+        if(free&&s>=lastEnd){ occ.push(s); lastEnd=s+L; }
+      }
+      if(occ.length<2) continue;
+      out.push({firstBeat:occ[0],len:L,count:occ.length,name:null});
+      occ.forEach(s=>{ for(let k=s;k<s+L;k++) used[k]=true; });
+    }
+  }
+  out.sort((a,b)=>a.firstBeat-b.firstBeat);
+  return out;
+}
+// SCORE patterns: the composer's own sections. A section body appearing at least
+// twice (via xN repeats or an = copy) and running >= minLen beats is a practice
+// pattern. One beat per token, so a subdivided beat counts once.
+function detectScorePatterns(score,minLen){
+  const inst=[]; let beat=0;
+  for(const sec of score.sections){
+    const len=sec.beats.length;
+    const bodyKey=JSON.stringify(sec.beats.map(function(tk){
+      if(tk.kind!=='beat') return tk.kind;
+      return tk.notes.map(nt=>nt.kind==='note'?(nt.reg+':'+nt.degree):nt.kind).join('-');
+    }));
+    for(let rep=0;rep<sec.times;rep++){ inst.push({name:sec.name,bodyKey:bodyKey,startBeat:beat,len:len}); beat+=len; }
+  }
+  const byBody=new Map();
+  inst.forEach(function(it){ if(!byBody.has(it.bodyKey)) byBody.set(it.bodyKey,[]); byBody.get(it.bodyKey).push(it); });
+  const out=[];
+  for(const entry of byBody){
+    const list=entry[1];
+    if(list.length<2||list[0].len<minLen) continue;
+    const first=list.reduce((a,b)=>b.startBeat<a.startBeat?b:a,list[0]);
+    out.push({firstBeat:first.startBeat,len:first.len,count:list.length,name:first.name||null});
+  }
+  out.sort((a,b)=>a.firstBeat-b.firstBeat);
+  return out;
+}
+const PATTERN_MIN_BEATS=8;
+function detectPatterns(){
+  if(!cells.length) patterns=[];
+  else if(notes.length) patterns=detectRepeats(cells,PATTERN_MIN_BEATS);       // transcription
+  else if(scoreDoc) patterns=detectScorePatterns(scoreDoc,PATTERN_MIN_BEATS);   // score
+  else patterns=[];
+  buildPatternPanel();
+}
+// Render a pattern's beats in the same notation, grouped in fours from its own
+// start. Notes reuse makeBeatCell so they match the main grid, but are not
+// registered as play-head targets.
+function renderPatternGrid(host,pat){
+  const row=document.createElement('div');row.className='notes';let g=null;
+  for(let b=0;b<pat.len;b++){
+    const cell=cells[pat.firstBeat+b]; if(!cell) continue;
+    if(b%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
+    g.appendChild(makeBeatCell(cell,{register:false,click:function(e){ startLoopAt(pat,e); }}));
+  }
+  host.appendChild(row);
+}
+function buildPatternPanel(){
+  const host=$('#patterns'); if(!host) return;
+  host.innerHTML='';
+  const panel=$('#patternsPanel'); if(panel) panel.style.display = patterns.length ? '' : 'none';
+  patterns.forEach(function(pat,i){
+    const box=document.createElement('div'); box.className='pattern'; pat._el=box;
+    const lab=document.createElement('div'); lab.className='plab';
+    const nm=document.createElement('span'); nm.className='pname';
+    nm.textContent = pat.name ? ('['+pat.name+']') : ('Pattern '+(i+1));
+    const meta=document.createElement('span'); meta.className='pmeta';
+    meta.textContent = pat.len+' beats · '+pat.count+'\u00d7';
+    const loop=document.createElement('span'); loop.className='ploop'; loop.textContent='looping';
+    lab.appendChild(nm); lab.appendChild(meta); lab.appendChild(loop);
+    box.appendChild(lab);
+    renderPatternGrid(box,pat);
+    host.appendChild(box);
+  });
+  markLoopingPattern();
+}
+function markLoopingPattern(){
+  patterns.forEach(function(pat){ if(pat._el) pat._el.classList.toggle('looping',pat===activeLoop); });
+}
+// Start at the tapped note and loop the pattern's beat span. Holds until Stop,
+// a tap elsewhere on the main grid, or a tap on another pattern.
+function startLoopAt(pat,e){
+  if(!T||!T.ready) return;
+  activeLoop=pat;
+  T.setLoop(beatToTime(pat.firstBeat), beatToTime(pat.firstBeat+pat.len));
+  T.currentTime=e.t;
+  markLoopingPattern();
+  if(T.paused) togglePlay();
+}
+function clearActiveLoop(){
+  if(!activeLoop) return;
+  activeLoop=null;
+  if(T&&T.clearLoop) T.clearLoop();
+  markLoopingPattern();
 }
 function paint(idx){for(let j=0;j<noteEls.length;j++){const e=noteEls[j];if(!e)continue;
   e.classList.toggle('played',j<idx);e.classList.toggle('active',j===idx);}}
@@ -1540,7 +1744,10 @@ function refreshReadout(){
 function scrollTo(el){const box=$('#scoreScroll'),br=box.getBoundingClientRect(),er=el.getBoundingClientRect();box.scrollTop+=(er.top-br.top)-box.clientHeight/2+er.height/2;}
 function tick(){
   if(!T){ return; }
-  const t=T.currentTime,dur=T.duration||1;
+  let t=T.currentTime; const dur=T.duration||1;
+  // Tight loop seam: wrap here at frame rate; the transports also self-wrap as a
+  // backstop. Resetting lastIdx replays the highlight from the loop start.
+  if(T.loopEnd!=null&&t>=T.loopEnd){ T.currentTime=(T.loopStart||0); t=(T.loopStart||0); lastIdx=-1; }
   $('#seekFill').style.width=(100*Math.min(1,Math.max(0,t/dur)))+'%';
   $('#time').textContent=fmt(t)+' / '+fmt(T.duration);
   const idx=activeIndex(t);
@@ -1554,7 +1761,7 @@ function tick(){
 }
 function togglePlay(){if(!T||!T.ready)return;
   if(T.paused){T.play();$('#play').textContent='Pause';cancelAnimationFrame(raf);raf=requestAnimationFrame(tick);}
-  else{T.pause();$('#play').textContent='Play';}}
+  else{T.pause();$('#play').textContent='Play';clearActiveLoop();}}
 $('#play').addEventListener('click',togglePlay);
 // step one gatra (four notes) at a time, landing on gatra boundaries
 // Steps by BEAT. The old note-index arithmetic drifted on any score containing
