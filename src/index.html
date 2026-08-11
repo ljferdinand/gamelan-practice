@@ -1383,6 +1383,18 @@ $('#profileFile').addEventListener('change',async e=>{
     instrument={name:d.name||'Instrument',voices};
     calVoices=voices.map(v=>({label:v.label,f0:v.f0,quality:0,reg:v.reg,previewed:false}));
     calMode='loaded'; expectedVoices=calVoices.length;
+    // Decode any embedded audio back into per-voice samples so the preview button
+    // sounds a loaded instrument just like a freshly sliced or uploaded one (and
+    // the preview-first delete gate then applies to loaded profiles too).
+    for(let j=0;j<voices.length;j++){
+      const enc=voices[j].wav; if(!enc) continue;
+      try{
+        const bin=atob(enc), bytes=new Uint8Array(bin.length);
+        for(let k=0;k<bin.length;k++) bytes[k]=bin.charCodeAt(k);
+        const ab=await audioCtx().decodeAudioData(bytes.buffer);
+        calVoices[j].seg=ab.getChannelData(0).slice(); calVoices[j].sr=ab.sampleRate;
+      }catch(_){}
+    }
     renderResults();
     $('#tabPlay').disabled=false;$('#instLabel').textContent=instrument.name;
     $('#instMeta').textContent='· '+voices.length+' voices, '+voices[0].f0.toFixed(0)+'–'+voices[voices.length-1].f0.toFixed(0)+' Hz';
@@ -1433,13 +1445,24 @@ function buildBars(){
   const wrap=$('#bars');wrap.innerHTML='';barEls=[];
   if(!instrument)return; const n=instrument.voices.length;
   instrument.voices.forEach((v,i)=>{
-    const el=document.createElement('div');el.className='bar';
+    const el=document.createElement('div');el.className='bar';el.style.cursor='pointer';
     const f=n>1?i/(n-1):0;el.style.width=(24-f*10)+'px';el.style.height=(84-f*46)+'px';
-    el.title=v.label+' · '+regWord(v.reg)+' · '+v.f0.toFixed(1)+' Hz';
+    el.title=v.label+' · '+regWord(v.reg)+' · '+v.f0.toFixed(1)+' Hz · tap to hear';
     const lab=document.createElement('span');lab.className='blab';
     lab.innerHTML=noteHtml(v.label, v.reg||0);el.appendChild(lab);
     wrap.appendChild(el);barEls[i]=el;
+    el.addEventListener('click',function(){ playVoice(i); });
   });
+}
+// Tap a bar on the play view to hear that voice, any time, over playback too. A
+// one-shot straight to the output, independent of the transport.
+async function playVoice(i){
+  try{
+    const bufs=await ensureBuffers(); const b=bufs&&bufs[i]; if(!b)return;
+    const ctx=audioCtx(); if(ctx.state==='suspended')ctx.resume();
+    const s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start();
+    const el=barEls[i]; if(el){ el.classList.add('hit'); setTimeout(function(){ el.classList.remove('hit'); }, reduce?55:95); }
+  }catch(_){}
 }
 $('#perfFile').addEventListener('change',e=>{
   if(e.target.files[0]){ $('#perfName').textContent=e.target.files[0].name; $('#analyzePerf').disabled=false; }
