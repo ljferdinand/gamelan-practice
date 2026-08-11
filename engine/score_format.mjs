@@ -197,15 +197,15 @@ export function toEvents(score) {
       for (const tk of s.beats) {
         if (tk.kind === 'rest') { beat++; continue; }
         if (tk.kind === 'damp') { events.push({ t: beat * beatSec, beat, kind: 'damp' }); beat++; continue; }
-        const n = tk.notes.length;
+        const dsub = tk.notes.length;
         tk.notes.forEach((nt, k) => {
-          const sub = beat + k / n;
+          const pos = beat + k / dsub;
           if (nt.kind === 'note') {
-            events.push({ t: sub * beatSec, beat: sub, kind: 'note',
+            events.push({ t: pos * beatSec, beat: pos, kind: 'note',
                           degree: nt.degree, reg: nt.reg + s.octShift,
-                          section: s.name, rep });
+                          section: s.name, rep, sub: dsub });
           } else if (nt.kind === 'damp') {
-            events.push({ t: sub * beatSec, beat: sub, kind: 'damp', section: s.name, rep });
+            events.push({ t: pos * beatSec, beat: pos, kind: 'damp', section: s.name, rep, sub: dsub });
           }
         });
         beat++;
@@ -232,11 +232,25 @@ export function serializeFlat(events, { name, instrument, bpm, style } = {}) {
     if (b > maxBeat) maxBeat = b;
   }
   const mark = (r) => r === 0 ? '' : (r > 0 ? '^'.repeat(r) : '_'.repeat(-r));
+  const tok = (e) => e.kind === 'damp' ? '*' : `${mark(e.reg)}${e.degree}`;
   const toks = [];
   for (let b = 0; b <= maxBeat; b++) {
     const g = (byBeat.get(b) || []).sort((p, q) => p.beat - q.beat);
     if (!g.length) { toks.push('.'); continue; }
-    toks.push(g.map(e => e.kind === 'damp' ? '*' : `${mark(e.reg)}${e.degree}`).join('-'));
+    // Reconstruct subdivision slots (with rests) when the beat remembers its
+    // subdivision; otherwise join the strikes as before.
+    const D = Math.max(...g.map(e => e.sub || 0));
+    if (D > 1) {
+      const slots = new Array(D).fill('.');
+      for (const e of g) {
+        let sIdx = Math.round((e.beat - b) * D);
+        if (sIdx < 0) sIdx = 0; if (sIdx > D - 1) sIdx = D - 1;
+        slots[sIdx] = tok(e);
+      }
+      toks.push(slots.join('-'));
+    } else {
+      toks.push(g.map(tok).join('-'));
+    }
   }
   const lines = [];
   for (let i = 0; i < toks.length; i += 16) {
