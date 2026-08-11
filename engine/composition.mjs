@@ -77,6 +77,31 @@ export function eventsFromTranscription(notes, voices) {
 }
 
 /**
+ * Same as eventsFromTranscription, but places each strike on an inferred beat
+ * grid (beat = grid.beats[i]) rather than its index, so rests and subdivisions
+ * come through. Off-tune strikes are KEPT (unplayable) so they stay visible for
+ * correction; the serializer is what drops them.
+ *
+ * grid: the beat grid from the onset analysis, with grid.beats[i] the beat that
+ *       the i-th onset was snapped to (may be fractional for a subdivision).
+ */
+export function eventsFromTranscriptionGrid(notes, voices, grid) {
+  return notes.map((n, i) => {
+    const known = n.snap && n.snap.flag !== '?';
+    const v = known ? voices[n.snap.index] : null;
+    return {
+      beat: grid.beats[i],     // measured onset placed on the inferred beat grid
+      t: n.t,                  // real onset time from the recording
+      kind: 'note',
+      degree: v ? String(v.label) : '\u00b7',
+      reg: v ? (v.reg || 0) : 0,
+      voiceIndex: known ? n.snap.index : null,
+      unplayable: !known,
+    };
+  });
+}
+
+/**
  * Score events -> the same shape, with each event bound to a voice on the
  * instrument. Events whose degree+register has no bar are marked unplayable and
  * carry voiceIndex null, which the existing .q styling already covers.
