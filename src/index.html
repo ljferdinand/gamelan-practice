@@ -146,6 +146,36 @@ table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear
 .pattern .ploop{margin-left:auto;font-size:11px;color:var(--bronze);opacity:0;}
 .pattern.looping .ploop{opacity:1;}
 .pattern .notes{cursor:pointer;}
+/* --- B: transcript editing --- */
+.scorebar{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.edithint{color:var(--muted);font-size:12px;display:none;}
+#playPanel.editing .edithint{display:inline;}
+#editToggle.on{color:var(--gold);border-color:var(--bronze);}
+.addnote{display:none;margin-left:3px;width:15px;height:15px;line-height:13px;text-align:center;border:1px solid var(--line);border-radius:4px;color:var(--muted);font-size:12px;cursor:pointer;vertical-align:middle;user-select:none;}
+.addnote:hover{color:var(--gold);border-color:var(--bronze);}
+#playPanel.editing .addnote{display:inline-block;}
+#playPanel.editing .beat .note{cursor:pointer;}
+#playPanel.editing .beat .note:hover{outline:1px solid var(--bronze);border-radius:4px;}
+.picker{position:fixed;z-index:50;background:#160f0a;border:1px solid var(--bronze);border-radius:10px;padding:10px;box-shadow:0 8px 26px rgba(0,0,0,.5);}
+.picker .ptitle{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;}
+.picker .voices{display:flex;flex-wrap:wrap;gap:6px;max-width:260px;}
+.picker .pv{min-width:34px;padding:5px 7px;background:#1b140d;border:1px solid var(--line);border-radius:7px;color:var(--parch);cursor:pointer;font-size:15px;line-height:1;}
+.picker .pv:hover{border-color:var(--bronze);color:var(--gold);}
+.picker .prow{display:flex;gap:8px;margin-top:9px;}
+.picker .pdel{flex:1;padding:5px 8px;background:#1b140d;border:1px solid #5b2b2b;border-radius:7px;color:#e0a0a0;cursor:pointer;font-size:12px;}
+.picker .pdel:hover{border-color:#a04040;color:#f0c0c0;}
+.picker .pcancel{flex:1;padding:5px 8px;background:#1b140d;border:1px solid var(--line);border-radius:7px;color:var(--muted);cursor:pointer;font-size:12px;}
+.picker .pok{flex:1;padding:5px 8px;background:#241a10;border:1px solid var(--bronze);border-radius:7px;color:var(--gold);cursor:pointer;font-size:12px;font-weight:700;}
+.picker .pok:hover{background:#2c2013;}
+.picker .subrow{display:flex;gap:6px;margin-bottom:9px;}
+.picker .subbtn{flex:1;padding:5px 0;background:#1b140d;border:1px solid var(--line);border-radius:7px;color:var(--muted);cursor:pointer;font-size:12px;}
+.picker .subbtn.on{color:var(--gold);border-color:var(--bronze);}
+.picker .slots{display:flex;gap:6px;margin-bottom:9px;justify-content:center;}
+.picker .slot{min-width:30px;height:30px;background:#120c07;border:1px dashed var(--line);border-radius:7px;color:var(--parch);cursor:pointer;font-size:15px;line-height:1;display:flex;align-items:center;justify-content:center;}
+.picker .slot.cur{border-style:solid;border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset;}
+.picker .slot.empty{color:var(--muted);}
+.picker .prest{color:var(--muted);font-size:18px;}
+.note.rslot{color:var(--muted);opacity:.55;}
 .empty{color:var(--muted);text-align:center;padding:24px;font-size:14px;}
 .foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);padding-top:14px;margin-top:6px;}
 .foot b{color:var(--parch);}
@@ -280,7 +310,8 @@ table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear
       <div class="bars" id="bars"></div>
       <div class="caption" id="barsCap">the voices, low → high — lit as struck</div>
     </div>
-    <div class="panel">
+    <div class="panel" id="playPanel">
+      <div class="scorebar"><button class="btn ghost" id="editToggle" disabled>Edit</button><span class="edithint">click a note to change or remove it · the + on a beat inserts one</span></div>
       <div class="notekey" id="notekey"></div>
       <div class="score" id="scoreScroll"><div id="score"><div class="empty">Load a performance and transcribe it to follow along.</div></div></div>
     </div>
@@ -288,6 +319,7 @@ table.cal .q{display:inline-block;height:7px;border-radius:4px;background:linear
       <p class="patterns-head">Practice patterns — click a note to loop that phrase</p>
       <div id="patterns"></div>
     </div>
+    <div class="picker" id="notePicker" hidden></div>
   </section>
 
   <div class="foot">
@@ -652,14 +684,14 @@ function scoreToEvents(score){
       for(const tk of sec.beats){
         if(tk.kind==='rest'){beat++;continue;}
         if(tk.kind==='damp'){events.push({t:beat*score.beatSec,beat:beat,kind:'damp'});beat++;continue;}
-        const n=tk.notes.length;
+        const dsub=tk.notes.length;
         tk.notes.forEach(function(nt,k){
-          const sub=beat+k/n;
+          const pos=beat+k/dsub;
           if(nt.kind==='note')
-            events.push({t:sub*score.beatSec,beat:sub,kind:'note',
-              degree:nt.degree,reg:nt.reg+sec.octShift,section:sec.name,rep:rep});
+            events.push({t:pos*score.beatSec,beat:pos,kind:'note',
+              degree:nt.degree,reg:nt.reg+sec.octShift,section:sec.name,rep:rep,sub:dsub});
           else if(nt.kind==='damp')
-            events.push({t:sub*score.beatSec,beat:sub,kind:'damp',section:sec.name,rep:rep});
+            events.push({t:pos*score.beatSec,beat:pos,kind:'damp',section:sec.name,rep:rep,sub:dsub});
         });
         beat++;
       }
@@ -927,19 +959,30 @@ function inferBeatGrid(times){
 function eventsToScoreText(evs,grid,meta){
   const mark=r=>r===0?'':(r>0?'^'.repeat(r):'_'.repeat(-r));
   const byBeat=new Map(); let maxBeat=-1;
-  evs.forEach(function(e,i){
-    if(e.voiceIndex==null&&e.unplayable)return;      // no bar: cannot be written
-    const b=Math.floor(grid.beats[i]+1e-9);
+  // Group by whole beat, keeping each strike's fractional position and its
+  // remembered subdivision, so a beat's rests and slot layout survive the round
+  // trip. Strikes with no sub (raw transcription) fall back to a plain join.
+  evs.forEach(function(e){
+    if(e.kind!=='note'&&e.kind!=='damp')return;
+    if(e.kind==='note'&&e.voiceIndex==null&&e.unplayable)return;   // no bar: cannot be written
+    const bt=(e.beat!=null?e.beat:0), b=Math.floor(bt+1e-9);
     if(!byBeat.has(b))byBeat.set(b,[]);
-    byBeat.get(b).push({tok:mark(e.reg)+e.degree,at:grid.beats[i]});
+    byBeat.get(b).push({tok:e.kind==='damp'?'*':(mark(e.reg)+e.degree),at:bt,sub:e.sub||0});
     if(b>maxBeat)maxBeat=b;
   });
   const toks=[];
   for(let b=0;b<=maxBeat;b++){
     const g=byBeat.get(b);
     if(!g||!g.length){toks.push('.');continue;}
-    g.sort((x,y)=>x.at-y.at);
-    toks.push(g.map(x=>x.tok).join('-'));
+    const D=Math.max.apply(null,g.map(x=>x.sub));
+    if(D>1){
+      const slots=new Array(D).fill('.');
+      g.forEach(function(x){ let s=Math.round((x.at-b)*D); if(s<0)s=0; if(s>D-1)s=D-1; slots[s]=x.tok; });
+      toks.push(slots.join('-'));
+    } else {
+      g.sort((x,y)=>x.at-y.at);
+      toks.push(g.map(x=>x.tok).join('-'));
+    }
   }
   const out=[];
   out.push('# Written from a transcribed performance by Gamelan Practice.');
@@ -1458,6 +1501,7 @@ async function loadScoreText(text,label){
     if(audio.src){ audio.pause(); }
     buildScore();
     activeLoop=null; detectPatterns();
+    $('#editToggle').disabled=true; setEditMode(false);
     $('#play').disabled=false;$('#rwd').disabled=false;$('#ffwd').disabled=false;
     lastIdx=-1;lastTop=-1;$('#seekFill').style.width='0%';$('#play').textContent='Play';
     refreshReadout();
@@ -1516,6 +1560,7 @@ $('#analyzePerf').addEventListener('click',async()=>{
     $('#exportScore').disabled=!perfGrid;
     buildScore();
     activeLoop=null; detectPatterns();
+    $('#editToggle').disabled=false; setEditMode(false);
     $('#play').disabled=false; $('#rwd').disabled=false; $('#ffwd').disabled=false;
     lastIdx=-1; lastTop=-1; $('#seekFill').style.width='0%';
     let tm='Transcribed '+notes.length+' strikes.';
@@ -1564,33 +1609,60 @@ function buildLegend(){
 // One beat cell as a DOM node, shared by the main score and the pattern panel so
 // the two cannot drift. `register` records each note in noteEls for the play-head
 // (main score only); `click` fires with the event when a note is tapped.
+function makeNoteEl(nn,cell,opts){
+  const e=nn.event,el=document.createElement('span');
+  el.className='note'+(e.unplayable?' q':'');
+  el.innerHTML=noteHtml(e.degree,e.reg);
+  if(!e.unplayable)el.title=e.degree+' · '+regWord(e.reg);
+  el.addEventListener('click',function(ev){
+    if(editMode&&opts.editable){ ev.stopPropagation(); openBeatEditor(el,cell); }
+    else if(opts.click){ opts.click(e); }
+  });
+  if(opts.register) noteEls[nn.eventIndex]=el;
+  return el;
+}
 function makeBeatCell(cell,opts){
   opts=opts||{};
-  const n=cell.notes.length;
+  const notes=cell.notes;
+  // A beat with a remembered subdivision (sub>1) draws that many slots, with a
+  // dot in the empty ones. Strikes with no sub (raw transcription) keep the old
+  // count-based layout, so an unedited transcription looks exactly as before.
+  const hasSub=notes.some(nn=>(nn.event.sub||0)>1);
   const beat=document.createElement('span');
-  beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
-  if(n===0) beat.title='beat '+cell.beat+' — no new strike';
   const inner=document.createElement('span');inner.className='inner';
-  cell.notes.forEach(function(nn){
-    const e=nn.event,el=document.createElement('span');
-    el.className='note'+(e.unplayable?' q':'');
-    el.innerHTML=noteHtml(e.degree,e.reg);
-    if(!e.unplayable)el.title=e.degree+' · '+regWord(e.reg);
-    if(opts.click) el.addEventListener('click',function(){opts.click(e);});
-    inner.appendChild(el);
-    if(opts.register) noteEls[nn.eventIndex]=el;
-  });
+  if(hasSub){
+    const D=Math.max.apply(null,notes.map(nn=>nn.event.sub||1));
+    beat.className='beat sub'+(D>2?4:2);
+    const fb=Math.floor(cell.beat+1e-9), bySlot=new Array(D).fill(null);
+    notes.forEach(function(nn){ let s=Math.round(((nn.event.beat||fb)-fb)*D); if(s<0)s=0; if(s>D-1)s=D-1; bySlot[s]=nn; });
+    for(let s=0;s<D;s++){
+      if(bySlot[s]) inner.appendChild(makeNoteEl(bySlot[s],cell,opts));
+      else { const r=document.createElement('span'); r.className='note rslot'; r.textContent='\u00b7'; inner.appendChild(r); }
+    }
+  } else {
+    const n=notes.length;
+    beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
+    if(n===0) beat.title='beat '+cell.beat+' — no new strike';
+    notes.forEach(function(nn){ inner.appendChild(makeNoteEl(nn,cell,opts)); });
+  }
   beat.appendChild(inner);
   const beam=document.createElement('span');beam.className='beam';beat.appendChild(beam);
+  if(opts.editable){
+    const add=document.createElement('span');add.className='addnote';add.textContent='+';
+    add.title='edit this beat';
+    add.addEventListener('click',function(ev){ ev.stopPropagation(); openBeatEditor(add,cell); });
+    beat.appendChild(add);
+  }
   return beat;
 }
 function buildScore(){
   const sc=$('#score');sc.innerHTML='';noteEls=[];
+  const editable=notes.length>0;   // editing is for transcriptions, not authored scores
   const row=document.createElement('div');row.className='notes';let g=null;
   cells.forEach(function(cell){
     if(cell.beat%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
     // A tap on the main grid seeks there and cancels any active practice loop.
-    g.appendChild(makeBeatCell(cell,{register:true,click:function(e){
+    g.appendChild(makeBeatCell(cell,{register:true,editable:editable,click:function(e){
       clearActiveLoop(); if(!T||!T.ready)return; T.currentTime=e.t; if(T.paused)togglePlay(); }}));
   });
   sc.appendChild(row);
@@ -1688,7 +1760,7 @@ function renderPatternGrid(host,pat){
   for(let b=0;b<pat.len;b++){
     const cell=cells[pat.firstBeat+b]; if(!cell) continue;
     if(b%4===0){g=document.createElement('span');g.className='gatra';row.appendChild(g);}
-    g.appendChild(makeBeatCell(cell,{register:false,click:function(e){ startLoopAt(pat,e); }}));
+    g.appendChild(makeBeatCell(cell,{register:false,editable:false,click:function(e){ startLoopAt(pat,e); }}));
   }
   host.appendChild(row);
 }
@@ -1729,6 +1801,136 @@ function clearActiveLoop(){
   activeLoop=null;
   if(T&&T.clearLoop) T.clearLoop();
   markLoopingPattern();
+}
+
+/* ===================== B: transcript editing ===================== */
+let editMode=false, beatEd=null, correctedDirty=true;
+
+function setEditMode(on){
+  editMode=!!on;
+  const b=$('#editToggle'); if(b){ b.classList.toggle('on',editMode); b.textContent=editMode?'Done':'Edit'; }
+  const p=$('#playPanel'); if(p) p.classList.toggle('editing',editMode);
+  if(!editMode) closeBeatEditor();
+}
+$('#editToggle').addEventListener('click',function(){ if(!$('#editToggle').disabled) setEditMode(!editMode); });
+
+// Read a beat's current content into an editable slot model: its subdivision
+// (remembered, else the strike count) and one entry per slot, a voice or a rest.
+function cellToSlots(cell){
+  const notes=cell.notes||[];
+  const subs=notes.map(nn=>nn.event.sub||0).filter(s=>s>1);
+  let D=subs.length?Math.max.apply(null,subs):(notes.length||1); if(D<1)D=1;
+  const fb=Math.floor(cell.beat+1e-9), slots=new Array(D).fill(null);
+  notes.forEach(function(nn){
+    const e=nn.event; let s=Math.round(((e.beat||fb)-fb)*D); if(s<0)s=0; if(s>D-1)s=D-1;
+    slots[s]={degree:e.degree,reg:e.reg,voiceIndex:(e.voiceIndex==null?null:e.voiceIndex),unplayable:!!e.unplayable};
+  });
+  return {D:D,slots:slots,fb:fb};
+}
+// The picker is a small BEAT editor: pick a subdivision, fill each slot with a
+// voice or a rest, then Confirm. It opens on a whole beat, pre-filled.
+function openBeatEditor(anchorEl,cell){
+  if(!instrument||!instrument.voices||!cell) return;
+  const st=cellToSlots(cell);
+  beatEd={cell:cell,fb:st.fb,D:st.D,slots:st.slots,cursor:0,anchor:anchorEl};
+  const fe=beatEd.slots.findIndex(s=>!s); beatEd.cursor=fe<0?0:fe;
+  renderBeatEditor();
+}
+function renderBeatEditor(){
+  if(!beatEd) return;
+  const pk=$('#notePicker'); pk.innerHTML='';
+  const sub=document.createElement('div'); sub.className='subrow';
+  [1,2,4].forEach(function(d){
+    const b=document.createElement('button'); b.className='subbtn'+(beatEd.D===d?' on':''); b.textContent=d+'\u00d7';
+    b.addEventListener('click',function(ev){ ev.stopPropagation(); setBeatSub(d); renderBeatEditor(); });
+    sub.appendChild(b);
+  });
+  pk.appendChild(sub);
+  const field=document.createElement('div'); field.className='slots';
+  beatEd.slots.forEach(function(s,i){
+    const box=document.createElement('button'); box.className='slot'+(i===beatEd.cursor?' cur':'')+(s?'':' empty');
+    box.innerHTML = s ? noteHtml(s.degree,s.reg) : '\u00b7';
+    box.addEventListener('click',function(ev){ ev.stopPropagation(); beatEd.cursor=i; renderBeatEditor(); });
+    field.appendChild(box);
+  });
+  pk.appendChild(field);
+  const vs=document.createElement('div'); vs.className='voices';
+  instrument.voices.forEach(function(v,i){
+    const btn=document.createElement('button'); btn.className='pv';
+    btn.innerHTML=noteHtml(v.label,v.reg||0); btn.title=v.label+' · '+regWord(v.reg||0);
+    btn.addEventListener('click',function(ev){ ev.stopPropagation();
+      fillCurrent({degree:String(v.label),reg:v.reg||0,voiceIndex:i,unplayable:false}); renderBeatEditor(); });
+    vs.appendChild(btn);
+  });
+  const rest=document.createElement('button'); rest.className='pv prest'; rest.textContent='\u00b7'; rest.title='rest / no strike';
+  rest.addEventListener('click',function(ev){ ev.stopPropagation(); fillCurrent(null); renderBeatEditor(); });
+  vs.appendChild(rest);
+  pk.appendChild(vs);
+  const row=document.createElement('div'); row.className='prow';
+  const ok=document.createElement('button'); ok.className='pok'; ok.textContent='Confirm';
+  ok.addEventListener('click',function(ev){ ev.stopPropagation(); applyBeat(); });
+  const cancel=document.createElement('button'); cancel.className='pcancel'; cancel.textContent='Cancel';
+  cancel.addEventListener('click',function(ev){ ev.stopPropagation(); closeBeatEditor(); });
+  row.appendChild(ok); row.appendChild(cancel);
+  pk.appendChild(row);
+  pk.hidden=false;
+  const a=beatEd.anchor, r=a.getBoundingClientRect(), pr=pk.getBoundingClientRect();
+  let left=r.left, top=r.bottom+6;
+  if(left+pr.width>innerWidth-8) left=innerWidth-8-pr.width;
+  if(left<8) left=8;
+  if(top+pr.height>innerHeight-8) top=r.top-6-pr.height;
+  if(top<8) top=8;
+  pk.style.left=left+'px'; pk.style.top=top+'px';
+}
+// Changing the subdivision keeps each filled slot at the same position in the
+// beat, so 2x -> 4x preserves the timing and just refines the grid.
+function setBeatSub(d){
+  const old=beatEd.slots, oldD=beatEd.D, next=new Array(d).fill(null);
+  old.forEach(function(s,i){ if(!s)return; let ns=Math.round((i/oldD)*d); if(ns<0)ns=0; if(ns>d-1)ns=d-1; next[ns]=s; });
+  beatEd.D=d; beatEd.slots=next;
+  const fe=next.findIndex(s=>!s); beatEd.cursor=fe<0?0:fe;
+}
+function fillCurrent(val){
+  beatEd.slots[beatEd.cursor]=val;   // null = rest
+  let nx=-1; for(let k=1;k<=beatEd.D;k++){ const idx=(beatEd.cursor+k)%beatEd.D; if(!beatEd.slots[idx]){ nx=idx; break; } }
+  beatEd.cursor = nx>=0 ? nx : Math.min(beatEd.D-1, beatEd.cursor+1);
+}
+function closeBeatEditor(){ const pk=$('#notePicker'); if(pk){ pk.hidden=true; pk.innerHTML=''; } beatEd=null; }
+document.addEventListener('click',function(e){
+  const pk=$('#notePicker'); if(pk&&!pk.hidden&&!pk.contains(e.target)) closeBeatEditor();
+});
+// Replace the whole beat's strikes with the composed slots. Notes carry the
+// subdivision (sub) so the layout and a saved score keep the rests. An edited
+// beat takes grid time; untouched beats keep their measured onset.
+function applyBeat(){
+  if(!beatEd) return;
+  const fb=beatEd.fb, D=beatEd.D, beatSec=perfGrid?perfGrid.beatSec:(scoreDoc?scoreDoc.beatSec:0.5);
+  events=events.filter(function(e){ return Math.floor((e.beat!=null?e.beat:0)+1e-9)!==fb; });
+  beatEd.slots.forEach(function(s,i){
+    if(!s)return;                       // rest slot: no event
+    const pos=fb+i/D;
+    events.push({kind:'note',beat:pos,t:pos*beatSec,degree:s.degree,reg:s.reg,
+      voiceIndex:(s.voiceIndex==null?null:s.voiceIndex),unplayable:!!s.unplayable,sub:(D>1?D:1)});
+  });
+  events.sort((a,b)=>((a.t||0)-(b.t||0)));
+  closeBeatEditor();
+  rebuildAfterEdit();
+}
+// After any edit: re-lay the grid, re-render notation and patterns, refresh the
+// clock, and pause, since the edited grid no longer matches a running play-head.
+function rebuildAfterEdit(){
+  const total = perfGrid ? perfGrid.totalBeats
+    : (events.length ? Math.floor(Math.max.apply(null,events.map(e=>e.beat!=null?e.beat:0)))+1 : 0);
+  cells=layoutBeats(events,total);
+  times=events.map(e=>e.t);
+  if(T&&!T.paused){ T.pause(); $('#play').textContent='Play'; }
+  clearActiveLoop();
+  correctedDirty=true;         // any synthesized "corrected" playback is now stale
+  buildScore();
+  detectPatterns();
+  lastIdx=-1; lastTop=-1;
+  refreshReadout();
+  $('#exportScore').disabled=!perfGrid;
 }
 function paint(idx){for(let j=0;j<noteEls.length;j++){const e=noteEls[j];if(!e)continue;
   e.classList.toggle('played',j<idx);e.classList.toggle('active',j===idx);}}
