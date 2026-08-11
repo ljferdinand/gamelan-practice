@@ -168,6 +168,8 @@ export class CompositionTransport {
     this.onended = null;
     this.LOOKAHEAD = 0.35;  // score seconds scheduled in advance
     this.TICK_MS = 90;
+    this.loopStart = null;  // A/B loop region in score seconds, or null
+    this.loopEnd = null;
     this._out = ctx.createGain();
     this._out.gain.value = gain;
     this._out.connect(ctx.destination);
@@ -230,6 +232,11 @@ export class CompositionTransport {
     try { this._out.disconnect(); } catch (e) { /* already gone */ }
   }
 
+  /** Arm or clear an A/B loop region, in score seconds. tick() wraps at frame
+   *  rate for a tight seam; _pump() self-wraps as a backstop. */
+  setLoop(a, b) { this.loopStart = a; this.loopEnd = b; }
+  clearLoop() { this.loopStart = this.loopEnd = null; }
+
   // ---- internals ----
 
   _seekIndex(at) {
@@ -242,12 +249,15 @@ export class CompositionTransport {
     this._live = [];
   }
 
-  /** Schedule everything due within the look-ahead, then check for the end. */
+  /** Schedule everything due within the look-ahead, then check for a loop wrap
+   *  or the end. With a loop armed we never schedule past its end, or notes from
+   *  the next pass would sound during this one before we wrap. */
   _pump() {
     if (this._paused) return;
     const now = this.currentTime;
     const horizon = now + this.LOOKAHEAD;
-    while (this._next < this.events.length && this.events[this._next].t <= horizon) {
+    const cap = this.loopEnd != null ? Math.min(horizon, this.loopEnd) : horizon;
+    while (this._next < this.events.length && this.events[this._next].t <= cap) {
       const e = this.events[this._next++];
       const buf = this.buffers[e.voiceIndex];
       if (!buf) continue;
@@ -263,6 +273,7 @@ export class CompositionTransport {
         if (k >= 0) this._live.splice(k, 1);
       };
     }
+    if (this.loopEnd != null && now >= this.loopEnd) { this.seek(this.loopStart || 0); return; }
     if (now >= this._duration) {
       this.pause();
       this._pos = this._duration;
@@ -276,7 +287,17 @@ export class AudioFileTransport {
   constructor(audio) {
     this.audio = audio;
     this.onended = null;
-    audio.addEventListener('ended', () => { if (this.onended) this.onended(); });
+    this.loopStart = null;   // A/B loop region in seconds, or null
+    this.loopEnd = null;
+    // <audio> has no native A/B loop, so wrap on timeupdate; tick() also wraps
+    // at frame rate. This backstop also catches a loop that ends at file end.
+    audio.addEventListener('timeupdate', () => {
+      if (this.loopEnd != null && this.audio.currentTime >= this.loopEnd) this.audio.currentTime = this.loopStart || 0;
+    });
+    audio.addEventListener('ended', () => {
+      if (this.loopEnd != null) { this.audio.currentTime = this.loopStart || 0; this.audio.play(); return; }
+      if (this.onended) this.onended();
+    });
   }
   get duration() { return this.audio.duration || 0; }
   get paused() { return this.audio.paused; }
@@ -287,6 +308,8 @@ export class AudioFileTransport {
   pause() { this.audio.pause(); }
   seek(t) { this.audio.currentTime = t; }
   dispose() { this.audio.pause(); }
+  setLoop(a, b) { this.loopStart = a; this.loopEnd = b; }
+  clearLoop() { this.loopStart = this.loopEnd = null; }
 }
 
 /* ------------------------------------------------------------- bundle load --- */
