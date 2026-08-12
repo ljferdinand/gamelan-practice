@@ -26,7 +26,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tone Prep — gamelan practice</title>
+<!-- PWA: installable, offline app shell -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#191410">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gamelan">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="apple-touch-icon" href="gong-192.png">
+<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+}
+</script>
+<title>Tone Prep — Gamelan Practice</title>
 <style>
   :root {
     /* Carved lacquer and luminous bronze — the instrument's own materials.

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Gong Ageng">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="82%">
+      <stop offset="0%" stop-color="#2b2016"/>
+      <stop offset="62%" stop-color="#191410"/>
+      <stop offset="100%" stop-color="#120c08"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffcf6b" stop-opacity="0.30"/>
+      <stop offset="55%" stop-color="#c0803a" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#c0803a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="face" cx="40%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#f2d089"/>
+      <stop offset="38%" stop-color="#c98a34"/>
+      <stop offset="78%" stop-color="#8a561f"/>
+      <stop offset="100%" stop-color="#583716"/>
+    </radialGradient>
+    <radialGradient id="boss" cx="40%" cy="35%" r="72%">
+      <stop offset="0%" stop-color="#ffe2a4"/>
+      <stop offset="45%" stop-color="#d59433"/>
+      <stop offset="100%" stop-color="#7c4f22"/>
+    </radialGradient>
+  </defs>
+
+  <!-- lacquer ground -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- warm glow behind the gong -->
+  <circle cx="256" cy="256" r="206" fill="url(#halo)"/>
+
+  <!-- the gong face -->
+  <circle cx="256" cy="256" r="185" fill="url(#face)" stroke="#4a2f16" stroke-width="6"/>
+
+  <!-- concentric hammered rings -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#5c3a18" stroke-width="3" opacity="0.5"/>
+  <circle cx="256" cy="256" r="112" fill="none" stroke="#5c3a18" stroke-width="3" opacity="0.5"/>
+
+  <!-- seat ring cradling the boss -->
+  <circle cx="256" cy="256" r="70" fill="none" stroke="#3f2913" stroke-width="4" opacity="0.75"/>
+
+  <!-- central boss (pencu) -->
+  <circle cx="256" cy="256" r="60" fill="url(#boss)" stroke="#5c3a18" stroke-width="3"/>
+
+  <!-- glint on the boss -->
+  <ellipse cx="237" cy="238" rx="21" ry="13" fill="#fff3d6" opacity="0.5"/>
+
+  <!-- upper rim highlight -->
+  <path d="M 130 166 A 185 185 0 0 1 382 166" fill="none" stroke="#f3d79a" stroke-width="4" opacity="0.35" stroke-linecap="round"/>
+</svg>

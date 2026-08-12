@@ -1,0 +1,20 @@
+{
+  "name": "Gamelan Practice",
+  "short_name": "Gamelan",
+  "description": "A self-calibrating practice tool for gamelan: teach it your instrument's own tuning, then play along.",
+  "id": "/gamelan-practice/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#191410",
+  "theme_color": "#191410",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["music", "education"],
+  "icons": [
+    { "src": "icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "gong-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "gong-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ]
+}
