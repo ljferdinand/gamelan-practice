@@ -118,6 +118,7 @@ textarea:focus-visible{outline:2px solid var(--bronze);outline-offset:1px;}
 .note .dots{display:flex;gap:2px;height:4px;align-items:center;justify-content:center;}
 .note .dots i{width:3px;height:3px;border-radius:50%;background:var(--parch);display:block;}
 .note.damp .d{color:var(--bad);}
+.note.rslot{color:var(--muted);opacity:.55;}
 .foot{color:var(--muted);font-size:12px;line-height:1.6;border-top:1px solid var(--line);
   padding-top:14px;margin-top:40px;}
 </style>
@@ -384,14 +385,14 @@ function scoreToEvents(score){
       for(const tk of sec.beats){
         if(tk.kind==='rest'){beat++;continue;}
         if(tk.kind==='damp'){events.push({t:beat*score.beatSec,beat:beat,kind:'damp'});beat++;continue;}
-        const n=tk.notes.length;
+        const dsub=tk.notes.length;
         tk.notes.forEach(function(nt,k){
-          const sub=beat+k/n;
+          const pos=beat+k/dsub;
           if(nt.kind==='note')
-            events.push({t:sub*score.beatSec,beat:sub,kind:'note',
-              degree:nt.degree,reg:nt.reg+sec.octShift});
+            events.push({t:pos*score.beatSec,beat:pos,kind:'note',
+              degree:nt.degree,reg:nt.reg+sec.octShift,sub:dsub});
           else if(nt.kind==='damp')
-            events.push({t:sub*score.beatSec,beat:sub,kind:'damp'});
+            events.push({t:pos*score.beatSec,beat:pos,kind:'damp',sub:dsub});
         });
         beat++;
       }
@@ -459,23 +460,41 @@ function render(){
   let g=null;
   cells.forEach(function(cell){
     if(cell.beat%4===0){g=document.createElement('span');g.className='gatra';out.appendChild(g);}
-    const n=cell.notes.length;
+    const notes=cell.notes;
     const beat=document.createElement('span');
-    beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
-    if(n===0)beat.title='beat '+cell.beat+' — no new strike';
     const inner=document.createElement('span');inner.className='inner';
-    cell.notes.forEach(function(nn){
-      const e=nn.event,el=document.createElement('span');
+    const mkNote=function(e){
+      const el=document.createElement('span');
       el.className='note'+(e.kind==='damp'?' damp':'');
       el.innerHTML=noteHtml(e.kind==='damp'?'\u00d7':e.degree,e.reg||0);
-      inner.appendChild(el);
-    });
+      return el;
+    };
+    // A beat that remembers a subdivision (sub>1) draws that many slots, with a
+    // dot in the empty ones, so 3-.-2-. shows four slots rather than a collapsed
+    // 3 2. Beats without a remembered sub keep the old strike-count layout.
+    // Mirrors makeBeatCell() in index.html.
+    const hasSub=notes.some(nn=>(nn.event.sub||0)>1);
+    if(hasSub){
+      const D=Math.max.apply(null,notes.map(nn=>nn.event.sub||1));
+      beat.className='beat sub'+(D>2?4:2);
+      const fb=Math.floor(cell.beat+1e-9),bySlot=new Array(D).fill(null);
+      notes.forEach(function(nn){let s=Math.round(((nn.event.beat||fb)-fb)*D);if(s<0)s=0;if(s>D-1)s=D-1;bySlot[s]=nn.event;});
+      for(let s=0;s<D;s++){
+        if(bySlot[s])inner.appendChild(mkNote(bySlot[s]));
+        else{const r=document.createElement('span');r.className='note rslot';r.textContent='\u00b7';inner.appendChild(r);}
+      }
+    }else{
+      const n=notes.length;
+      beat.className='beat'+(n===0?' rest':(n>1?(' sub'+(n>2?4:2)):''));
+      if(n===0)beat.title='beat '+cell.beat+' — no new strike';
+      notes.forEach(function(nn){inner.appendChild(mkNote(nn.event));});
+    }
     beat.appendChild(inner);
     const beam=document.createElement('span');beam.className='beam';beat.appendChild(beam);
     g.appendChild(beat);
   });
   const rests=cells.filter(c=>c.notes.length===0).length;
-  const subs=cells.filter(c=>c.notes.length>1).length;
+  const subs=cells.filter(c=>c.notes.some(nn=>(nn.event.sub||0)>1)).length;
   const notes=ev.events.filter(e=>e.kind==='note').length;
   const mins=Math.floor(ev.duration/60),secs=Math.round(ev.duration%60);
   stats.textContent=notes+' notes · '+ev.totalBeats+' beats · '+
